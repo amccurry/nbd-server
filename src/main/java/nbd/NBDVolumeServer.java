@@ -35,6 +35,10 @@ import org.slf4j.LoggerFactory;
 import com.google.common.io.Closer;
 import com.google.common.primitives.UnsignedInteger;
 import com.google.common.primitives.UnsignedLong;
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListeningExecutorService;
 
 import nbd.NBD.Command;
 
@@ -42,13 +46,18 @@ public class NBDVolumeServer implements Closeable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(NBDVolumeServer.class);
 
+  private static final boolean DEBUG = true;
+
   private final DataInputStream in;
   private final DataOutputStream out;
   private final String exportName;
   private final Storage storage;
   private final Closer closer;
+  private final ListeningExecutorService service;
 
-  public NBDVolumeServer(Storage storage, DataInputStream in, DataOutputStream out) throws IOException {
+  public NBDVolumeServer(Storage storage, DataInputStream in, DataOutputStream out, ListeningExecutorService service)
+      throws IOException {
+    this.service = service;
     this.exportName = storage.getExportName();
     this.storage = storage;
     this.in = in;
@@ -88,17 +97,28 @@ public class NBDVolumeServer implements Closeable {
         // We could ultimately support this but it isn't common by any means
         throw new IllegalArgumentException("Failed to read, length too long: " + requestLength);
       }
+
+      CommandHandler commandHandler = new CommandHandler(requestType, handle, offset, requestLength, service);
+
       switch (requestType) {
       case READ: {
         byte[] buffer = new byte[requestLength.intValue()];
-        LOGGER.info("Reading {} from {}", buffer.length, offset);
-        storage.read(buffer, offset.longValue(), () -> {
-          synchronized (out) {
-            out.write(NBD_REPLY_MAGIC_BYTES);
-            out.write(NBD_OK_BYTES);
-            out.writeLong(handle);
-            out.write(buffer);
-            out.flush();
+        if (DEBUG) {
+          LOGGER.info("Reading {} from {}", buffer.length, offset);
+        }
+
+        ExecCommand callable = storage.read(buffer, offset.longValue());
+        commandHandler.handleRequest(callable, () -> {
+          try {
+            synchronized (out) {
+              out.write(NBD_REPLY_MAGIC_BYTES);
+              out.write(NBD_OK_BYTES);
+              out.writeLong(handle);
+              out.write(buffer);
+              out.flush();
+            }
+          } catch (Throwable t) {
+            LOGGER.error("reading " + buffer.length + " from " + offset + "", t);
           }
         });
         break;
@@ -106,9 +126,17 @@ public class NBDVolumeServer implements Closeable {
       case WRITE: {
         byte[] buffer = new byte[requestLength.intValue()];
         in.readFully(buffer);
-        LOGGER.info("Writing {} from {}", buffer.length, offset);
-        storage.write(buffer, offset.longValue(), () -> {
-          writeReplyHeaderAndFlush(handle);
+        if (DEBUG) {
+          LOGGER.info("Writing {} from {}", buffer.length, offset);
+        }
+
+        ExecCommand callable = storage.write(buffer, offset.longValue());
+        commandHandler.handleRequest(callable, () -> {
+          try {
+            writeReplyHeaderAndFlush(handle);
+          } catch (Throwable t) {
+            LOGGER.error("writing " + buffer.length + " from " + offset + "", t);
+          }
         });
         break;
       }
@@ -119,9 +147,14 @@ public class NBDVolumeServer implements Closeable {
       case FLUSH:
         LOGGER.info("Flushing");
         long start = System.currentTimeMillis();
-        storage.flush(() -> {
-          writeReplyHeaderAndFlush(handle);
-          LOGGER.info("Flush complete: " + (System.currentTimeMillis() - start) + "ms");
+        ExecCommand callable = storage.flush();
+        commandHandler.handleRequest(callable, () -> {
+          try {
+            writeReplyHeaderAndFlush(handle);
+            LOGGER.info("Flush complete: " + (System.currentTimeMillis() - start) + "ms");
+          } catch (Throwable t) {
+            LOGGER.error("flushing", t);
+          }
         });
         break;
       case TRIM:
@@ -134,6 +167,40 @@ public class NBDVolumeServer implements Closeable {
       }
     }
 
+  }
+
+  static class CommandHandler {
+    private final Command requestType;
+    private final long handle;
+    private final UnsignedLong offset;
+    private final UnsignedInteger requestLength;
+    private final ListeningExecutorService service;
+
+    CommandHandler(Command requestType, long handle, UnsignedLong offset, UnsignedInteger requestLength,
+        ListeningExecutorService service) {
+      this.requestType = requestType;
+      this.handle = handle;
+      this.offset = offset;
+      this.requestLength = requestLength;
+      this.service = service;
+    }
+
+    void handleRequest(ExecCommand callable, Runnable success) {
+      ListenableFuture<Void> explosion = service.submit(() -> {
+        callable.call();
+        return null;
+      });
+      Futures.addCallback(explosion, new FutureCallback<Void>() {
+        public void onSuccess(Void v) {
+          success.run();
+        }
+
+        public void onFailure(Throwable t) {
+          LOGGER.error("requestType [" + requestType + "] handle [" + handle + "] offset [" + offset
+              + "] requestLength [" + requestLength + "]", t);
+        }
+      });
+    }
   }
 
   @Override

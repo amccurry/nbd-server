@@ -19,18 +19,27 @@ package nbd;
 
 import java.io.IOException;
 
-public interface Storage {
-  void connect() throws IOException;
+public abstract class Storage {
+  private final String exportName;
 
-  void disconnect() throws IOException;
+  public Storage(String exportName) {
+    this.exportName = exportName;
+  }
 
-  void read(byte[] buffer, long offset, Callable finished) throws IOException;
+  public final String getExportName() {
+    return exportName;
+  }
 
-  void write(byte[] buffer, long offset, Callable finished) throws IOException;
+  public abstract void connect() throws IOException;
 
-  void flush(Callable finished) throws IOException;
+  public abstract void disconnect() throws IOException;
 
-  long size();
+  public abstract ExecCommand read(byte[] buffer, long offset);
 
-  String getExportName();
+  public abstract ExecCommand write(byte[] buffer, long offset);
+
+  public abstract ExecCommand flush();
+
+  public abstract long size();
+
 }

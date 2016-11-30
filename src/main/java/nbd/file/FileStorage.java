@@ -23,25 +23,25 @@ import java.io.RandomAccessFile;
 
 import com.google.common.io.Closer;
 
-import nbd.Callable;
+import nbd.ExecCommand;
 import nbd.Storage;
 
-public class FileStorage implements Storage {
+public class FileStorage extends Storage {
 
-  private final String exportName;
+  private static final String RW = "rw";
   private final File file;
   private Closer closer;
   private RandomAccessFile raf;
 
   public FileStorage(File file) {
-    this.exportName = file.getName();
+    super(file.getName());
     this.file = file;
   }
 
   @Override
   public void connect() throws IOException {
     closer = Closer.create();
-    raf = closer.register(new RandomAccessFile(file, "rw"));
+    raf = closer.register(new RandomAccessFile(file, RW));
   }
 
   @Override
@@ -50,33 +50,38 @@ public class FileStorage implements Storage {
   }
 
   @Override
-  public void read(byte[] buffer, long offset, Callable finished) throws IOException {
-    raf.seek(offset);
-    raf.read(buffer);
-    finished.call();
+  public ExecCommand read(byte[] buffer, long offset) {
+    return () -> {
+      synchronized (raf) {
+        raf.seek(offset);
+        raf.read(buffer);
+      }
+    };
   }
 
   @Override
-  public void write(byte[] buffer, long offset, Callable finished) throws IOException {
-    raf.seek(offset);
-    raf.write(buffer);
-    finished.call();
+  public ExecCommand write(byte[] buffer, long offset) {
+    return () -> {
+      synchronized (raf) {
+        raf.seek(offset);
+        raf.write(buffer);
+      }
+    };
   }
 
   @Override
-  public void flush(Callable finished) throws IOException {
-    raf.getFD().sync();
-    finished.call();
+  public ExecCommand flush() {
+    return () -> {
+      synchronized (raf) {
+        raf.getFD()
+           .sync();
+      }
+    };
   }
 
   @Override
   public long size() {
     return file.length();
-  }
-
-  @Override
-  public String getExportName() {
-    return exportName;
   }
 
 }

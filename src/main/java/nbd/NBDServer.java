@@ -17,11 +17,6 @@
 */
 package nbd;
 
-import com.google.common.base.Charsets;
-import com.google.common.io.Closer;
-
-import nbd.file.FileStorageFactory;
-
 import static nbd.NBD.INIT_PASSWD;
 import static nbd.NBD.NBD_FLAG_HAS_FLAGS;
 import static nbd.NBD.NBD_OPT_EXPORT_NAME;
@@ -35,23 +30,29 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.base.Charsets;
+import com.google.common.io.Closer;
+import com.google.common.util.concurrent.ListeningExecutorService;
+import com.google.common.util.concurrent.MoreExecutors;
+
+import nbd.file.FileStorageFactory;
 
 public class NBDServer {
 
   private static Logger LOGGER = LoggerFactory.getLogger(NBDServer.class);
 
   public static void main(String[] args) throws IOException {
-    ExecutorService es = Executors.newCachedThreadPool();
+    ListeningExecutorService service = MoreExecutors.listeningDecorator(Executors.newCachedThreadPool());
     LOGGER.info("Listening for client connections");
     StorageFactory storageFactory = new FileStorageFactory(new File(args[0]));
     try (ServerSocket ss = new ServerSocket(10809)) {
       while (true) {
-        es.submit(new VolumeServerRunner(ss.accept(), storageFactory));
+        service.submit(new VolumeServerRunner(ss.accept(), storageFactory, service));
       }
     }
   }
@@ -61,24 +62,27 @@ public class NBDServer {
     private final Socket socket;
     private final StorageFactory storageFactory;
     private final Closer closer;
+    private final ListeningExecutorService service;
 
-    public VolumeServerRunner(Socket socket, StorageFactory storageFactory) {
+    public VolumeServerRunner(Socket socket, StorageFactory storageFactory, ListeningExecutorService service) {
       this.closer = Closer.create();
       this.socket = closer.register(socket);
       this.storageFactory = storageFactory;
+      this.service = service;
     }
 
     @Override
     public void run() {
       try {
         InetSocketAddress remoteSocketAddress = (InetSocketAddress) socket.getRemoteSocketAddress();
-        LOGGER.info("Client connected from: {}", remoteSocketAddress.getAddress().getHostAddress());
+        LOGGER.info("Client connected from: {}", remoteSocketAddress.getAddress()
+                                                                    .getHostAddress());
         DataInputStream in = new DataInputStream(socket.getInputStream());
         DataOutputStream out = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
         String exportName = performHandShake(in, out);
         LOGGER.info("Connecting client to {}", exportName);
         Storage storage = storageFactory.newStorage(exportName);
-        try (NBDVolumeServer nbdVolumeServer = new NBDVolumeServer(storage, in, out)) {
+        try (NBDVolumeServer nbdVolumeServer = new NBDVolumeServer(storage, in, out,service)) {
           LOGGER.info("Volume mounted");
           nbdVolumeServer.handleConnection();
         }
