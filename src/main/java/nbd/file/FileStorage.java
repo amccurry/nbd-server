@@ -73,7 +73,8 @@ public class FileStorage extends NBDStorage {
   public NBDCommand flush() {
     return () -> {
       synchronized (raf) {
-        raf.getFD().sync();
+        raf.getFD()
+           .sync();
       }
     };
   }
@@ -84,12 +85,16 @@ public class FileStorage extends NBDStorage {
   }
 
   @Override
-  public NBDCommand trim(long length, long position) {
+  public NBDCommand trim(long l, long position) {
     return () -> {
       synchronized (raf) {
+        long length = l;
         raf.seek(position);
-        for (long l = 0; l < length; l++) {
-          raf.write(0);
+        byte[] buf = new byte[1024 * 1024];
+        while (length > 0) {
+          int len = (int) Math.min(buf.length, length);
+          raf.write(buf, 0, len);
+          length -= len;
         }
       }
     };

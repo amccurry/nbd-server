@@ -118,7 +118,17 @@ public class AppendStorageTest {
 
       @Override
       public void trim(int startingBlockId, int count) throws IOException {
-        
+
+      }
+
+      @Override
+      public void compact() throws IOException {
+
+      }
+
+      @Override
+      public void open() throws IOException {
+
       }
 
     };

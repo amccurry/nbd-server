@@ -37,9 +37,10 @@ public class LayerManagerTest {
   private Random writeRandom;
   private Random readRandom;
   private int maxCacheSize;
+  private File dir;
 
   @Before
-  public void setup() {
+  public void setup() throws IOException {
     root = new File("./target/tmp/" + LayerManagerTest.class.getName());
     TestUtils.rmr(root);
     root.mkdirs();
@@ -48,7 +49,7 @@ public class LayerManagerTest {
 
     blockSize = random.nextInt(MAX_BLOCK_SIZE) + 1;
     maxCacheSize = random.nextInt(MAX_CACHE_SIZE);
-    File dir = new File(root, "LayerManager");
+    dir = new File(root, "LayerManager");
     dir.mkdirs();
     layerManager = getLayerManager(blockSize, maxCacheSize, dir);
 
@@ -82,8 +83,8 @@ public class LayerManagerTest {
     for (int p = 0; p < passes; p++) {
       int numberOfBlocks = random.nextInt(MAX_NUMBER_OF_BLOCKS);
       int maxBlockId = random.nextInt(MAX_BLOCK_ID);
-      System.out
-          .println("Running pass [" + p + "] numberOfBlocks [" + numberOfBlocks + "] maxBlockId [" + maxBlockId + "]");
+      System.out.println(
+          "Running pass [" + p + "] numberOfBlocks [" + numberOfBlocks + "] maxBlockId [" + maxBlockId + "]");
       BitSet bitSet = new BitSet();
       try (RandomAccessFile rand = new RandomAccessFile(
           new File(root, "rand-follower-" + pass + "-" + getClass().getName()), "rw")) {
@@ -97,6 +98,52 @@ public class LayerManagerTest {
           rand.write(bs);
           bitSet.set(blockId);
         }
+        for (int blockId = 0; blockId < maxBlockId; blockId++) {
+          if (bitSet.get(blockId)) {
+            readAndAssert(blockId, rand);
+          }
+        }
+      }
+    }
+  }
+
+  @Test
+  public void test3() throws IOException {
+    write(11);
+    write(14);
+    write(17);
+    layerManager.close();
+    layerManager = getLayerManager(blockSize, maxCacheSize, dir);
+    layerManager.open();
+    readAndAssert(11);
+    readAndAssert(14);
+    readAndAssert(17);
+  }
+
+  @Test
+  public void test4() throws IOException {
+    Random random = new Random(seed);
+    long pass = random.nextLong();
+    int passes = 50;
+    for (int p = 0; p < passes; p++) {
+      int numberOfBlocks = random.nextInt(MAX_NUMBER_OF_BLOCKS);
+      int maxBlockId = random.nextInt(MAX_BLOCK_ID);
+      System.out.println(
+          "Running pass [" + p + "] numberOfBlocks [" + numberOfBlocks + "] maxBlockId [" + maxBlockId + "]");
+      BitSet bitSet = new BitSet();
+      try (RandomAccessFile rand = new RandomAccessFile(
+          new File(root, "rand-follower-" + pass + "-" + getClass().getName()), "rw")) {
+        rand.setLength(maxBlockId * blockSize);
+        for (int i = 0; i < numberOfBlocks; i++) {
+          int blockId = writeRandom.nextInt(maxBlockId);
+          // System.out.println("Writing [" + blockId + "]");
+          byte[] bs = write(blockId);
+          long pos = blockId * blockSize;
+          rand.seek(pos);
+          rand.write(bs);
+          bitSet.set(blockId);
+        }
+        layerManager.compact();
         for (int blockId = 0; blockId < maxBlockId; blockId++) {
           if (bitSet.get(blockId)) {
             readAndAssert(blockId, rand);
@@ -126,7 +173,7 @@ public class LayerManagerTest {
     assertArrayEquals("Seed [" + seed + "]", readBlock, readBuffer);
   }
 
-  private static LayerManager getLayerManager(int blockSize, int maxCacheSize, File dir) {
+  private static LayerManager getLayerManager(int blockSize, int maxCacheSize, File dir) throws IOException {
     return new FileLayerManager(blockSize, maxCacheSize, dir);
   }
 

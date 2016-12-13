@@ -5,6 +5,8 @@ import java.io.IOException;
 
 public interface LayerStorage extends Closeable {
 
+  void open() throws IOException;
+
   /**
    * Fully reads block into the buffer. Buffer length has to match the block
    * size of the layer storage.
@@ -32,11 +34,6 @@ public interface LayerStorage extends Closeable {
   void writeBlock(int blockId, byte[] buffer, int offset) throws IOException;
 
   /**
-   * Flushes the blocks to stable storage.
-   */
-  void flush() throws IOException;
-
-  /**
    * Trims the blocks by writing zeros.
    * 
    * @param startingBlockId
@@ -46,5 +43,15 @@ public interface LayerStorage extends Closeable {
    * @throws IOException
    */
   void trim(int startingBlockId, int count) throws IOException;
+
+  /**
+   * Compacts the storage.
+   */
+  void compact() throws IOException;
+
+  /**
+   * Flushes the blocks to stable storage.
+   */
+  void flush() throws IOException;
 
 }

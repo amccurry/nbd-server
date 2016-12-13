@@ -10,15 +10,20 @@ public class FileLayerManager extends LayerManager {
 
   private final File dir;
 
-  public FileLayerManager(int blockSize, int maxCacheMemory, File dir) {
+  public FileLayerManager(int blockSize, int maxCacheMemory, File dir) throws IOException {
     super(blockSize, maxCacheMemory);
+    dir.mkdir();
+    if (!dir.exists()) {
+      throw new IOException("Path [" + dir + "] does not exist.");
+    }
     this.dir = dir;
   }
 
   @Override
   protected LayerOutput newOutput(long layerId) throws IOException {
     File file = new File(dir, Long.toString(layerId));
-    file.getParentFile().mkdirs();
+    file.getParentFile()
+        .mkdirs();
     return LayerOutput.toLayerOutput(new FileOutputStream(file));
   }
 
@@ -52,5 +57,10 @@ public class FileLayerManager extends LayerManager {
       result[i] = Long.parseLong(layers[i]);
     }
     return result;
+  }
+
+  @Override
+  protected void removeLayer(long layerId) throws IOException {
+    new File(dir, Long.toString(layerId)).delete();
   }
 }

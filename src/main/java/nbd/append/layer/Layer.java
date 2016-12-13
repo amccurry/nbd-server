@@ -32,6 +32,10 @@ public class Layer {
     default int compareTo(Reader o) {
       return Long.compare(o.getLayerId(), getLayerId());
     }
+
+    ImmutableBitmapDataProvider getEmptyBlocks() throws IOException;
+
+    ImmutableBitmapDataProvider getDataBlocks() throws IOException;
   }
 
   public static class ReaderLayerInput implements Reader {
@@ -62,7 +66,6 @@ public class Layer {
         roaringBitmap.deserialize(dataInput);
         zerosPresent = (ImmutableBitmapDataProvider) roaringBitmap;
       }
-
       cardinality = dataPresent.getCardinality();
     }
 
@@ -118,6 +121,16 @@ public class Layer {
       if (!Arrays.equals(buf, HEADER)) {
         throw new IOException("Not a valid layer file.");
       }
+    }
+
+    @Override
+    public ImmutableBitmapDataProvider getEmptyBlocks() throws IOException {
+      return zerosPresent;
+    }
+
+    @Override
+    public ImmutableBitmapDataProvider getDataBlocks() throws IOException {
+      return dataPresent;
     }
 
   }
@@ -296,6 +309,16 @@ public class Layer {
 
     @Override
     public void appendEmpty(int blockId, int count) throws IOException {
+      throw new IOException("Not impl");
+    }
+
+    @Override
+    public ImmutableBitmapDataProvider getEmptyBlocks() throws IOException {
+      throw new IOException("Not impl");
+    }
+
+    @Override
+    public ImmutableBitmapDataProvider getDataBlocks() throws IOException {
       throw new IOException("Not impl");
     }
 

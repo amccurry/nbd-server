@@ -34,13 +34,16 @@ public class FileAppendStorageTest {
       for (int i = 0; i < passes; i++) {
         random.nextBytes(bufWrite);
         int pos = random.nextInt(size / 512) * 512;
-        storage.write(bufWrite, pos).call();
-        storage.read(bufRead, pos).call();
+        storage.write(bufWrite, pos)
+               .call();
+        storage.read(bufRead, pos)
+               .call();
         assertArrayEquals(bufWrite, bufRead);
       }
     }
     {
-      storage.flush().call();
+      storage.flush()
+             .call();
       Random random = new Random(seed);
       for (int i = 0; i < passes; i++) {
         random.nextBytes(bufWrite);

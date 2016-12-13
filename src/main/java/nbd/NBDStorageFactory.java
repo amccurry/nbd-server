@@ -17,6 +17,8 @@
 */
 package nbd;
 
+import java.io.IOException;
+
 public abstract class NBDStorageFactory {
-  public abstract NBDStorage newStorage(String exportName);
+  public abstract NBDStorage newStorage(String exportName) throws IOException;
 }

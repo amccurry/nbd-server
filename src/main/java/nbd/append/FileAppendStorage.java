@@ -8,8 +8,10 @@ import nbd.append.layer.LayerStorage;
 
 public class FileAppendStorage extends AppendStorage {
 
-  public static FileAppendStorage create(String exportName, File dir, int blockSize, int maxCacheMemory, long size) {
+  public static FileAppendStorage create(String exportName, File dir, int blockSize, int maxCacheMemory, long size)
+      throws IOException {
     FileLayerManager layerManager = new FileLayerManager(blockSize, maxCacheMemory, new File(dir, exportName));
+    layerManager.open();
     size = (size / blockSize) * blockSize;
     return new FileAppendStorage(exportName, layerManager, blockSize, size);
   }
