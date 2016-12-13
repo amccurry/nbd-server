@@ -1,11 +1,13 @@
 package nbd.append.layer;
 
 import java.io.Closeable;
+import java.io.DataInput;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.roaringbitmap.ImmutableBitmapDataProvider;
 import org.roaringbitmap.RoaringBitmap;
@@ -22,7 +24,9 @@ public class Layer {
   public static interface Reader extends Closeable, Comparable<Reader> {
     long getLayerId();
 
-    boolean readBlock(int blockId, byte[] buf, int offset, int length) throws IOException;
+    int getBlockSize();
+
+    boolean readBlock(int blockId, byte[] buf, int offset) throws IOException;
 
     @Override
     default int compareTo(Reader o) {
@@ -32,7 +36,8 @@ public class Layer {
 
   public static class ReaderLayerInput implements Reader {
 
-    private final ImmutableBitmapDataProvider bitmap;
+    private final ImmutableBitmapDataProvider dataPresent;
+    private final ImmutableBitmapDataProvider zerosPresent;
     private final LayerInput input;
     private final long layerId;
     private final int blockSize;
@@ -46,10 +51,24 @@ public class Layer {
       blockSize = input.readInt(4 + 8);
       headerLength = 4 + 8 + 4;
       long position = input.readLong(input.length() - 8);
-      RoaringBitmap roaringBitmap = new RoaringBitmap();
-      roaringBitmap.deserialize(input.getDataInput(position));
-      bitmap = (ImmutableBitmapDataProvider) roaringBitmap;
-      cardinality = bitmap.getCardinality();
+      DataInput dataInput = input.getDataInput(position);
+      {
+        RoaringBitmap roaringBitmap = new RoaringBitmap();
+        roaringBitmap.deserialize(dataInput);
+        dataPresent = (ImmutableBitmapDataProvider) roaringBitmap;
+      }
+      {
+        RoaringBitmap roaringBitmap = new RoaringBitmap();
+        roaringBitmap.deserialize(dataInput);
+        zerosPresent = (ImmutableBitmapDataProvider) roaringBitmap;
+      }
+
+      cardinality = dataPresent.getCardinality();
+    }
+
+    @Override
+    public int getBlockSize() {
+      return blockSize;
     }
 
     @Override
@@ -63,11 +82,14 @@ public class Layer {
     }
 
     @Override
-    public boolean readBlock(int blockId, byte[] buf, int offset, int length) throws IOException {
-      if (bitmap.contains(blockId)) {
+    public boolean readBlock(int blockId, byte[] buf, int offset) throws IOException {
+      if (zerosPresent.contains(blockId)) {
+        Arrays.fill(buf, offset, offset + buf.length, (byte) 0);
+        return true;
+      } else if (dataPresent.contains(blockId)) {
         int numberOfBlockIntoTheDataFile = findBitmapOffset(blockId);
         long pos = ((long) numberOfBlockIntoTheDataFile * (long) blockSize) + (long) headerLength;
-        input.read(pos, buf, offset, length);
+        input.read(pos, buf, offset, buf.length);
         return true;
       }
       return false;
@@ -79,7 +101,7 @@ public class Layer {
 
       while (low <= high) {
         int mid = (low + high) >>> 1;
-        int midVal = bitmap.select(mid);
+        int midVal = dataPresent.select(mid);
         if (midVal < key)
           low = mid + 1;
         else if (midVal > key)
@@ -104,7 +126,15 @@ public class Layer {
 
     boolean canAppend(int blockId);
 
-    void append(int blockId, byte[] block) throws IOException;
+    int getBlockSize();
+
+    default void append(int blockId, byte[] block) throws IOException {
+      append(blockId, block, 0);
+    }
+
+    void append(int blockId, byte[] buf, int off) throws IOException;
+
+    void appendEmpty(int blockId, int count) throws IOException;
 
   }
 
@@ -118,20 +148,35 @@ public class Layer {
       this.blockSize = blockSize;
     }
 
-    protected void checkInputs(int blockId, byte[] block) throws IOException {
+    @Override
+    public int getBlockSize() {
+      return blockSize;
+    }
+
+    protected void checkInputs(int blockId, int blockLength) throws IOException {
       if (!canAppend(blockId)) {
         throw new IOException("Block id " + blockId + " can not append block");
       }
-      if (block.length != blockSize) {
+      if (blockLength != blockSize) {
         throw new IOException(
-            "Block with length " + block.length + " is different than defined block size " + blockSize);
+            "Block with length " + blockLength + " is different than defined block size " + blockSize);
       }
+    }
+
+    protected boolean isAllZeros(byte[] buf, int off, int length) {
+      for (int i = 0; i < buf.length; i++) {
+        if (buf[i] != 0) {
+          return false;
+        }
+      }
+      return true;
     }
   }
 
   public static class WriterLayerOutput extends WriterBase {
 
-    private final RoaringBitmap bitmap = new RoaringBitmap();
+    private final RoaringBitmap dataPresent = new RoaringBitmap();
+    private final RoaringBitmap zerosPresent = new RoaringBitmap();
     private final LayerOutput output;
     private int prevBlockId = -1;
 
@@ -149,17 +194,30 @@ public class Layer {
     }
 
     @Override
-    public void append(int blockId, byte[] block) throws IOException {
-      checkInputs(blockId, block);
-      bitmap.add(blockId);
-      output.write(block, 0, block.length);
+    public void appendEmpty(int blockId, int count) throws IOException {
+      checkInputs(blockId, blockSize);
+      int end = blockId + count;
+      zerosPresent.add((long) blockId, end);
+      prevBlockId = end - 1;
+    }
+
+    @Override
+    public void append(int blockId, byte[] buf, int off) throws IOException {
+      checkInputs(blockId, buf.length);
+      if (isAllZeros(buf, off, buf.length)) {
+        zerosPresent.add(blockId);
+      } else {
+        dataPresent.add(blockId);
+        output.write(buf, off, buf.length);
+      }
       prevBlockId = blockId;
     }
 
     @Override
     public void close() throws IOException {
       long position = output.getPosition();
-      bitmap.serialize(output);
+      dataPresent.serialize(output);
+      zerosPresent.serialize(output);
       output.writeLong(position);
       output.close();
     }
@@ -175,6 +233,7 @@ public class Layer {
     private final int maxMemory;
     private final ConcurrentMap<Integer, byte[]> blockCache;
     private final WriterCallable writerForClosing;
+    private final AtomicInteger size = new AtomicInteger();
 
     public CacheContext(long layerId, int maxMemory, int blockSize, WriterCallable writerForClosing) {
       super(layerId, blockSize);
@@ -184,14 +243,16 @@ public class Layer {
     }
 
     @Override
-    public void append(int blockId, byte[] block) throws IOException {
-      checkInputs(blockId, block);
-      blockCache.put(blockId, copy(block));
+    public void append(int blockId, byte[] buf, int off) throws IOException {
+      checkInputs(blockId, buf.length);
+      if (blockCache.put(blockId, copy(buf, off)) == null) {
+        size.incrementAndGet();
+      }
     }
 
-    private byte[] copy(byte[] block) {
-      byte[] buf = new byte[block.length];
-      System.arraycopy(block, 0, buf, 0, block.length);
+    private byte[] copy(byte[] bs, int off) {
+      byte[] buf = new byte[blockSize];
+      System.arraycopy(bs, off, buf, 0, blockSize);
       return buf;
     }
 
@@ -211,7 +272,7 @@ public class Layer {
     }
 
     private boolean isFull() {
-      return blockCache.size() * blockSize >= maxMemory;
+      return size.get() * blockSize >= maxMemory;
     }
 
     @Override
@@ -220,13 +281,22 @@ public class Layer {
     }
 
     @Override
-    public boolean readBlock(int blockId, byte[] buf, int offset, int length) throws IOException {
+    public boolean readBlock(int blockId, byte[] buf, int offset) throws IOException {
       byte[] block = blockCache.get(blockId);
       if (block == null) {
         return false;
       }
-      System.arraycopy(block, 0, buf, offset, length);
+      System.arraycopy(block, 0, buf, offset, blockSize);
       return true;
+    }
+
+    public long getCurrentSize() {
+      return blockCache.size() * blockSize;
+    }
+
+    @Override
+    public void appendEmpty(int blockId, int count) throws IOException {
+      throw new IOException("Not impl");
     }
 
   }

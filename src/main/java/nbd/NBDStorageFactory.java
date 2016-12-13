@@ -17,29 +17,6 @@
 */
 package nbd;
 
-import java.io.IOException;
-
-public abstract class Storage {
-  private final String exportName;
-
-  public Storage(String exportName) {
-    this.exportName = exportName;
-  }
-
-  public final String getExportName() {
-    return exportName;
-  }
-
-  public abstract void connect() throws IOException;
-
-  public abstract void disconnect() throws IOException;
-
-  public abstract ExecCommand read(byte[] buffer, long offset);
-
-  public abstract ExecCommand write(byte[] buffer, long offset);
-
-  public abstract ExecCommand flush();
-
-  public abstract long size();
-
+public abstract class NBDStorageFactory {
+  public abstract NBDStorage newStorage(String exportName);
 }

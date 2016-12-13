@@ -1,5 +1,5 @@
 package nbd;
 
-public interface ExecCommand {
+public interface NBDCommand {
   void call() throws Exception;
 }

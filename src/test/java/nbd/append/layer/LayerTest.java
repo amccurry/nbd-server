@@ -77,7 +77,7 @@ public class LayerTest {
       int blockId = initalBlockId;
       for (int i = 0; i < numberOfBlocks; i++) {
         random.nextBytes(buf);
-        reader.readBlock(blockId, readBuf, 0, blockSize);
+        reader.readBlock(blockId, readBuf, 0);
         assertArrayEquals("Seed [" + seed + "]", readBuf, buf);
         total += buf.length;
         blockId += (random.nextInt(MAX_BLOCKS_TO_SKIP) + 1);

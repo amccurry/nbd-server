@@ -17,6 +17,32 @@
 */
 package nbd;
 
-public abstract class StorageFactory {
-  public abstract Storage newStorage(String exportName);
+import java.io.Closeable;
+import java.io.IOException;
+
+public abstract class NBDStorage implements Closeable {
+  private final String exportName;
+
+  public NBDStorage(String exportName) {
+    this.exportName = exportName;
+  }
+
+  public final String getExportName() {
+    return exportName;
+  }
+
+  public abstract void connect() throws IOException;
+
+  public abstract void disconnect() throws IOException;
+
+  public abstract NBDCommand read(byte[] buffer, long position);
+
+  public abstract NBDCommand write(byte[] buffer, long position);
+
+  public abstract NBDCommand trim(long length, long position);
+
+  public abstract NBDCommand flush();
+
+  public abstract long size();
+
 }

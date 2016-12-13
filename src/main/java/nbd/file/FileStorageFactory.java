@@ -19,10 +19,10 @@ package nbd.file;
 
 import java.io.File;
 
-import nbd.Storage;
-import nbd.StorageFactory;
+import nbd.NBDStorage;
+import nbd.NBDStorageFactory;
 
-public class FileStorageFactory extends StorageFactory {
+public class FileStorageFactory extends NBDStorageFactory {
 
   private final File dir;
 
@@ -31,7 +31,7 @@ public class FileStorageFactory extends StorageFactory {
   }
 
   @Override
-  public Storage newStorage(String exportName) {
+  public NBDStorage newStorage(String exportName) {
     return new FileStorage(new File(dir, exportName));
   }
 

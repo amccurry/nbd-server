@@ -30,16 +30,19 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Map;
 import java.util.concurrent.Executors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Charsets;
+import com.google.common.collect.MapMaker;
 import com.google.common.io.Closer;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
 
+import nbd.append.FileAppendStorage;
 import nbd.file.FileStorageFactory;
 
 public class NBDServer {
@@ -49,7 +52,25 @@ public class NBDServer {
   public static void main(String[] args) throws IOException {
     ListeningExecutorService service = MoreExecutors.listeningDecorator(Executors.newCachedThreadPool());
     LOGGER.info("Listening for client connections");
-    StorageFactory storageFactory = new FileStorageFactory(new File(args[0]));
+    File dir = new File(args[0]);
+    int maxCacheMemory = 32 * 1024 * 1024;
+    int blockSize = 4 * 1024;
+    long size = 1024l * 1024l * 1024l * 1024l;
+//    NBDStorageFactory storageFactory = new NBDStorageFactory() {
+//      private final Map<String, NBDStorage> cache = new MapMaker().makeMap();
+//
+//      @Override
+//      public synchronized NBDStorage newStorage(String exportName) {
+//        NBDStorage nbdStorage = cache.get(exportName);
+//        if (nbdStorage == null) {
+//          cache.put(exportName,
+//              nbdStorage = FileAppendStorage.create(exportName, dir, blockSize, maxCacheMemory, size));
+//        }
+//        return nbdStorage;
+//      }
+//    };
+    
+    FileStorageFactory storageFactory = new FileStorageFactory(new File("./mnt"));
     try (ServerSocket ss = new ServerSocket(10809)) {
       while (true) {
         service.submit(new VolumeServerRunner(ss.accept(), storageFactory, service));
@@ -60,11 +81,11 @@ public class NBDServer {
   static class VolumeServerRunner implements Runnable {
 
     private final Socket socket;
-    private final StorageFactory storageFactory;
+    private final NBDStorageFactory storageFactory;
     private final Closer closer;
     private final ListeningExecutorService service;
 
-    public VolumeServerRunner(Socket socket, StorageFactory storageFactory, ListeningExecutorService service) {
+    public VolumeServerRunner(Socket socket, NBDStorageFactory storageFactory, ListeningExecutorService service) {
       this.closer = Closer.create();
       this.socket = closer.register(socket);
       this.storageFactory = storageFactory;
@@ -75,14 +96,13 @@ public class NBDServer {
     public void run() {
       try {
         InetSocketAddress remoteSocketAddress = (InetSocketAddress) socket.getRemoteSocketAddress();
-        LOGGER.info("Client connected from: {}", remoteSocketAddress.getAddress()
-                                                                    .getHostAddress());
+        LOGGER.info("Client connected from: {}", remoteSocketAddress.getAddress().getHostAddress());
         DataInputStream in = new DataInputStream(socket.getInputStream());
         DataOutputStream out = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
         String exportName = performHandShake(in, out);
         LOGGER.info("Connecting client to {}", exportName);
-        Storage storage = storageFactory.newStorage(exportName);
-        try (NBDVolumeServer nbdVolumeServer = new NBDVolumeServer(storage, in, out,service)) {
+        NBDStorage storage = storageFactory.newStorage(exportName);
+        try (NBDVolumeServer nbdVolumeServer = new NBDVolumeServer(storage, in, out, service)) {
           LOGGER.info("Volume mounted");
           nbdVolumeServer.handleConnection();
         }
@@ -114,9 +134,7 @@ public class NBDServer {
       int length = in.readInt();
       byte[] bytes = new byte[length];
       in.readFully(bytes);
-
-      String exportName = new String(bytes, Charsets.UTF_8);
-      return exportName;
+      return new String(bytes, Charsets.UTF_8);
     }
 
   }

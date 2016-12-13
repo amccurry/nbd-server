@@ -23,10 +23,10 @@ import java.io.RandomAccessFile;
 
 import com.google.common.io.Closer;
 
-import nbd.ExecCommand;
-import nbd.Storage;
+import nbd.NBDCommand;
+import nbd.NBDStorage;
 
-public class FileStorage extends Storage {
+public class FileStorage extends NBDStorage {
 
   private static final String RW = "rw";
   private final File file;
@@ -50,7 +50,7 @@ public class FileStorage extends Storage {
   }
 
   @Override
-  public ExecCommand read(byte[] buffer, long offset) {
+  public NBDCommand read(byte[] buffer, long offset) {
     return () -> {
       synchronized (raf) {
         raf.seek(offset);
@@ -60,7 +60,7 @@ public class FileStorage extends Storage {
   }
 
   @Override
-  public ExecCommand write(byte[] buffer, long offset) {
+  public NBDCommand write(byte[] buffer, long offset) {
     return () -> {
       synchronized (raf) {
         raf.seek(offset);
@@ -70,11 +70,10 @@ public class FileStorage extends Storage {
   }
 
   @Override
-  public ExecCommand flush() {
+  public NBDCommand flush() {
     return () -> {
       synchronized (raf) {
-        raf.getFD()
-           .sync();
+        raf.getFD().sync();
       }
     };
   }
@@ -82,6 +81,23 @@ public class FileStorage extends Storage {
   @Override
   public long size() {
     return file.length();
+  }
+
+  @Override
+  public NBDCommand trim(long length, long position) {
+    return () -> {
+      synchronized (raf) {
+        raf.seek(position);
+        for (long l = 0; l < length; l++) {
+          raf.write(0);
+        }
+      }
+    };
+  }
+
+  @Override
+  public void close() throws IOException {
+    disconnect();
   }
 
 }

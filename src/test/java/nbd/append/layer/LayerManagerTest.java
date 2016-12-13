@@ -3,30 +3,29 @@ package nbd.append.layer;
 import static org.junit.Assert.assertArrayEquals;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Random;
 
+import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
 import nbd.append.TestUtils;
-import nbd.append.layer.LayerInput;
-import nbd.append.layer.LayerManager;
-import nbd.append.layer.LayerOutput;
 
 public class LayerManagerTest {
 
+  private static final int MAX_BLOCK_ID = 10000;
+  private static final int MAX_NUMBER_OF_BLOCKS = 1000;
+  private static final int MAX_BLOCK_SIZE = 1024;
+  private static final int MAX_CACHE_SIZE = 128 * 1024;
   private static long seed;
 
   @BeforeClass
   public static void before() {
     seed = TestUtils.getSeed();
-    seed = 6867878143973719929l;
   }
 
   private File root;
@@ -37,6 +36,7 @@ public class LayerManagerTest {
   private byte[] readBuffer;
   private Random writeRandom;
   private Random readRandom;
+  private int maxCacheSize;
 
   @Before
   public void setup() {
@@ -44,16 +44,24 @@ public class LayerManagerTest {
     TestUtils.rmr(root);
     root.mkdirs();
 
-    blockSize = 1024;
+    Random random = new Random(seed);
+
+    blockSize = random.nextInt(MAX_BLOCK_SIZE) + 1;
+    maxCacheSize = random.nextInt(MAX_CACHE_SIZE);
     File dir = new File(root, "LayerManager");
     dir.mkdirs();
-    layerManager = getLayerManager(blockSize, dir);
+    layerManager = getLayerManager(blockSize, maxCacheSize, dir);
 
     writeBlock = new byte[blockSize];
     readBlock = new byte[blockSize];
     readBuffer = new byte[blockSize];
     writeRandom = new Random(seed);
     readRandom = new Random(seed);
+  }
+
+  @After
+  public void tearDown() throws IOException {
+    layerManager.close();
   }
 
   @Test
@@ -70,9 +78,10 @@ public class LayerManagerTest {
   public void test2() throws IOException {
     Random random = new Random(seed);
     long pass = random.nextLong();
-    for (int p = 0; p < 2; p++) {
-      int numberOfBlocks = random.nextInt(1000);
-      int maxBlockId = random.nextInt(10000);
+    int passes = 50;
+    for (int p = 0; p < passes; p++) {
+      int numberOfBlocks = random.nextInt(MAX_NUMBER_OF_BLOCKS);
+      int maxBlockId = random.nextInt(MAX_BLOCK_ID);
       System.out
           .println("Running pass [" + p + "] numberOfBlocks [" + numberOfBlocks + "] maxBlockId [" + maxBlockId + "]");
       BitSet bitSet = new BitSet();
@@ -117,44 +126,8 @@ public class LayerManagerTest {
     assertArrayEquals("Seed [" + seed + "]", readBlock, readBuffer);
   }
 
-  private static LayerManager getLayerManager(int blockSize, File dir) {
-    return new LayerManager(blockSize) {
-
-      @Override
-      protected LayerOutput newOutput(long layerId) throws IOException {
-        File file = new File(dir, Long.toString(layerId));
-        return LayerOutput.toLayerOutput(new FileOutputStream(file));
-      }
-
-      @Override
-      protected long getNextLayerId() {
-        long[] layers = getLayers();
-        Arrays.sort(layers);
-        if (layers.length == 0) {
-          return 1L;
-        }
-        return layers[layers.length - 1] + 1L;
-      }
-
-      @Override
-      protected long[] getLayers() {
-        return toLongArray(dir.list());
-      }
-
-      @Override
-      protected LayerInput openLayer(long layerId) throws IOException {
-        RandomAccessFile rand = new RandomAccessFile(new File(dir, Long.toString(layerId)), "r");
-        return LayerInput.toLayerInput(rand);
-      }
-
-      private long[] toLongArray(String[] layers) {
-        long[] result = new long[layers.length];
-        for (int i = 0; i < layers.length; i++) {
-          result[i] = Long.parseLong(layers[i]);
-        }
-        return result;
-      }
-    };
+  private static LayerManager getLayerManager(int blockSize, int maxCacheSize, File dir) {
+    return new FileLayerManager(blockSize, maxCacheSize, dir);
   }
 
 }
