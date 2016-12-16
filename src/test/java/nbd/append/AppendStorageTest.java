@@ -122,7 +122,7 @@ public class AppendStorageTest {
       }
 
       @Override
-      public void compact() throws IOException {
+      public void releaseOldLayers() throws IOException {
 
       }
 

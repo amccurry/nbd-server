@@ -45,9 +45,9 @@ public interface LayerStorage extends Closeable {
   void trim(int startingBlockId, int count) throws IOException;
 
   /**
-   * Compacts the storage.
+   * Releases layers that no longer have data that is visible to the block device.
    */
-  void compact() throws IOException;
+  void releaseOldLayers() throws IOException;
 
   /**
    * Flushes the blocks to stable storage.

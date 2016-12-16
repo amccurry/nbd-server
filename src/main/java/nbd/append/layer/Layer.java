@@ -243,6 +243,8 @@ public class Layer {
 
   public static class CacheContext extends WriterBase implements Reader {
 
+    private final RoaringBitmap dataPresent = new RoaringBitmap();
+    private final RoaringBitmap zerosPresent = new RoaringBitmap();
     private final int maxMemory;
     private final ConcurrentMap<Integer, byte[]> blockCache;
     private final WriterCallable writerForClosing;
@@ -260,6 +262,10 @@ public class Layer {
       checkInputs(blockId, buf.length);
       if (blockCache.put(blockId, copy(buf, off)) == null) {
         size.incrementAndGet();
+      }
+      dataPresent.add(blockId);
+      if (zerosPresent.contains(blockId)) {
+        zerosPresent.flip(blockId);
       }
     }
 
@@ -295,6 +301,10 @@ public class Layer {
 
     @Override
     public boolean readBlock(int blockId, byte[] buf, int offset) throws IOException {
+      if (zerosPresent.contains(blockId)) {
+        Arrays.fill(buf, offset, offset + blockSize, (byte) 0);
+        return true;
+      }
       byte[] block = blockCache.get(blockId);
       if (block == null) {
         return false;
@@ -309,17 +319,20 @@ public class Layer {
 
     @Override
     public void appendEmpty(int blockId, int count) throws IOException {
-      throw new IOException("Not impl");
+      zerosPresent.add(blockId);
+      if (dataPresent.contains(blockId)) {
+        dataPresent.flip(blockId);
+      }
     }
 
     @Override
     public ImmutableBitmapDataProvider getEmptyBlocks() throws IOException {
-      throw new IOException("Not impl");
+      return zerosPresent;
     }
 
     @Override
     public ImmutableBitmapDataProvider getDataBlocks() throws IOException {
-      throw new IOException("Not impl");
+      return dataPresent;
     }
 
   }

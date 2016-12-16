@@ -5,6 +5,7 @@ import static org.junit.Assert.assertArrayEquals;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Random;
 
@@ -122,34 +123,20 @@ public class LayerManagerTest {
 
   @Test
   public void test4() throws IOException {
-    Random random = new Random(seed);
-    long pass = random.nextLong();
-    int passes = 50;
-    for (int p = 0; p < passes; p++) {
-      int numberOfBlocks = random.nextInt(MAX_NUMBER_OF_BLOCKS);
-      int maxBlockId = random.nextInt(MAX_BLOCK_ID);
-      System.out.println(
-          "Running pass [" + p + "] numberOfBlocks [" + numberOfBlocks + "] maxBlockId [" + maxBlockId + "]");
-      BitSet bitSet = new BitSet();
-      try (RandomAccessFile rand = new RandomAccessFile(
-          new File(root, "rand-follower-" + pass + "-" + getClass().getName()), "rw")) {
-        rand.setLength(maxBlockId * blockSize);
-        for (int i = 0; i < numberOfBlocks; i++) {
-          int blockId = writeRandom.nextInt(maxBlockId);
-          // System.out.println("Writing [" + blockId + "]");
-          byte[] bs = write(blockId);
-          long pos = blockId * blockSize;
-          rand.seek(pos);
-          rand.write(bs);
-          bitSet.set(blockId);
-        }
-        layerManager.compact();
-        for (int blockId = 0; blockId < maxBlockId; blockId++) {
-          if (bitSet.get(blockId)) {
-            readAndAssert(blockId, rand);
-          }
-        }
+    byte[] block = new byte[blockSize];
+    for (int p = 0; p < 10; p++) {
+      System.out.println("Running pass [" + p + "]");
+      Arrays.fill(block, (byte) p);
+      for (int blockId = 0; blockId < 100; blockId++) {
+        layerManager.writeBlock(blockId, block);
       }
+      System.out.println("Compacting");
+      layerManager.releaseOldLayers();
+    }
+    byte[] buf = new byte[blockSize];
+    for (int blockId = 0; blockId < 100; blockId++) {
+      layerManager.readBlock(blockId, buf);
+      assertArrayEquals(block, buf);
     }
   }
 

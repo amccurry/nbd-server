@@ -1,15 +1,17 @@
 package nbd.append.layer;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.apache.commons.io.IOUtils;
 import org.roaringbitmap.RoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,12 +73,49 @@ public abstract class LayerManager implements LayerStorage {
   }
 
   @Override
-  public void compact() throws IOException {
+  public void releaseOldLayers() throws IOException {
     synchronized (lock) {
       tryToFlush();
       refeshReaders();
-      compactInternal();
+      ReaderState state = readerState.get();
+      List<Reader> readers = new ArrayList<>(state.readers);
+      for (int i = 0; i < readers.size(); i++) {
+        if (!isInUse(readers, i)) {
+          closeAndRemove(readers.get(i));
+        }
+      }
+      refeshReaders();
     }
+  }
+
+  private void closeAndRemove(Reader reader) throws IOException {
+    LOG.info("layer {} reader {} no longer in use close and remove", reader.getLayerId(), reader);
+    reader.close();
+    removeLayer(reader.getLayerId());
+  }
+
+  private boolean isInUse(List<Reader> readers, int readerId) throws IOException {
+    Reader reader = readers.get(readerId);
+    RoaringBitmap readerData = new RoaringBitmap();
+    orData(reader, readerData);
+
+    RoaringBitmap existingData = new RoaringBitmap();
+    for (int i = 0; i < readerId; i++) {
+      Reader r = readers.get(i);
+      orData(r, existingData);
+    }
+
+    int card1 = readerData.getCardinality();
+    readerData.and(existingData);
+    int card2 = readerData.getCardinality();
+    return card1 != card2;
+  }
+
+  private void orData(Reader reader, RoaringBitmap readerData) throws IOException {
+    RoaringBitmap dataBlocks = (RoaringBitmap) reader.getDataBlocks();
+    RoaringBitmap emptyBlocks = (RoaringBitmap) reader.getEmptyBlocks();
+    readerData.or(dataBlocks);
+    readerData.or(emptyBlocks);
   }
 
   @Override
@@ -130,63 +169,6 @@ public abstract class LayerManager implements LayerStorage {
     }
   }
 
-  private void compactInternal() throws IOException {
-    List<Reader> readers = readerState.get().readers;
-    try (WriterLayerOutput output = newWriterLayerOutput()) {
-      writeReadersToOutput(readers, output);
-    }
-    removeOldFiles(readers);
-  }
-
-  private void removeOldFiles(List<Reader> readers) throws IOException {
-    for (Reader reader : readers) {
-      long layerId = reader.getLayerId();
-      removeLayer(layerId);
-      IOUtils.closeQuietly(reader);
-    }
-    this.readerState.set(null);
-  }
-
-  private void writeReadersToOutput(List<Reader> readers, WriterLayerOutput output) throws IOException {
-    RoaringBitmap dataBlocks = new RoaringBitmap();
-    RoaringBitmap zeroBlocks = new RoaringBitmap();
-    buildBitmaps(readers, dataBlocks, zeroBlocks);
-
-    RoaringBitmap allBlocks = new RoaringBitmap();
-    allBlocks.or(zeroBlocks);
-    allBlocks.or(dataBlocks);
-
-    byte[] buf = new byte[blockSize];
-    for (Integer blockId : allBlocks) {
-      if (dataBlocks.contains(blockId)) {
-        writeDataFromReader(output, buf, blockId);
-      } else {
-        output.appendEmpty(blockId, 1);
-      }
-    }
-  }
-
-  private void writeDataFromReader(WriterLayerOutput output, byte[] buf, Integer blockId) throws IOException {
-    for (Reader reader : readerState.get().readers) {
-      if (reader.readBlock(blockId, buf, 0)) {
-        output.append(blockId, buf);
-        return;
-      }
-    }
-  }
-
-  private static void buildBitmaps(List<Reader> readers, RoaringBitmap dataBlocks, RoaringBitmap zeroBlocks)
-      throws IOException {
-    for (Reader reader : readers) {
-      RoaringBitmap rdb = (RoaringBitmap) reader.getDataBlocks();
-      RoaringBitmap clone = rdb.clone();
-      clone.andNot(zeroBlocks);
-      dataBlocks.or(clone);
-      RoaringBitmap edb = (RoaringBitmap) reader.getEmptyBlocks();
-      zeroBlocks.or(edb);
-    }
-  }
-
   private CacheContext getWriter(int blockId) throws IOException {
     if (currentWriter != null && currentWriter.canAppend(blockId)) {
       LOG.debug("reusing writer current size {}", currentWriter.getCurrentSize());
@@ -217,8 +199,8 @@ public abstract class LayerManager implements LayerStorage {
 
   private void refeshReaders() throws IOException {
     synchronized (lock) {
-      Map<Long, Reader> readers = index();
       long[] layers = getLayers();
+      Map<Long, Reader> readers = index(layers);
       for (int i = 0; i < layers.length; i++) {
         long layerId = layers[i];
         if (!readers.containsKey(layerId)) {
@@ -236,16 +218,22 @@ public abstract class LayerManager implements LayerStorage {
     }
   }
 
-  private Map<Long, Reader> index() {
+  private Map<Long, Reader> index(long[] layers) {
     ReaderState state = readerState.get();
     List<Reader> currentReaders = null;
     if (state != null) {
       currentReaders = state.readers;
     }
     Map<Long, Reader> readers = new HashMap<>();
+    Set<Long> validLayers = new HashSet<>();
+    for (long l : layers) {
+      validLayers.add(l);
+    }
     if (currentReaders != null) {
       for (Reader reader : currentReaders) {
-        readers.put(reader.getLayerId(), reader);
+        if (validLayers.contains(reader.getLayerId())) {
+          readers.put(reader.getLayerId(), reader);
+        }
       }
     }
     return readers;

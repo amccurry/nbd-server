@@ -89,14 +89,16 @@ public class NBDServer {
         InetSocketAddress remoteSocketAddress = (InetSocketAddress) socket.getRemoteSocketAddress();
         LOGGER.info("Client connected from: {}", remoteSocketAddress.getAddress()
                                                                     .getHostAddress());
-        DataInputStream in = new DataInputStream(socket.getInputStream());
-        DataOutputStream out = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
-        String exportName = performHandShake(in, out);
-        LOGGER.info("Connecting client to {}", exportName);
-        NBDStorage storage = closer.register(storageFactory.newStorage(exportName));
-        try (NBDVolumeServer nbdVolumeServer = new NBDVolumeServer(storage, in, out, service)) {
-          LOGGER.info("Volume mounted");
-          nbdVolumeServer.handleConnection();
+        try (DataInputStream in = new DataInputStream(socket.getInputStream())) {
+          try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()))) {
+            String exportName = performHandShake(in, out);
+            LOGGER.info("Connecting client to {}", exportName);
+            NBDStorage storage = closer.register(storageFactory.newStorage(exportName));
+            try (NBDVolumeServer nbdVolumeServer = new NBDVolumeServer(storage, in, out, service)) {
+              LOGGER.info("Volume mounted");
+              nbdVolumeServer.handleConnection();
+            }
+          }
         }
       } catch (Throwable t) {
         LOGGER.error("Failed to connect", t);

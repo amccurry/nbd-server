@@ -16,7 +16,7 @@ public class FileAppendStorage extends AppendStorage {
     return new FileAppendStorage(exportName, layerManager, blockSize, size);
   }
 
-  private long size;
+  private final long size;
 
   public FileAppendStorage(String exportName, LayerStorage layerStorage, int blockSize, long size) {
     super(exportName, layerStorage, blockSize);

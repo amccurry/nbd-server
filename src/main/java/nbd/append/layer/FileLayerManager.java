@@ -5,10 +5,19 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.util.Arrays;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.TimeUnit;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class FileLayerManager extends LayerManager {
 
+  private static final Logger LOG = LoggerFactory.getLogger(FileLayerManager.class);
+
   private final File dir;
+  private final Timer timer;
 
   public FileLayerManager(int blockSize, int maxCacheMemory, File dir) throws IOException {
     super(blockSize, maxCacheMemory);
@@ -17,6 +26,24 @@ public class FileLayerManager extends LayerManager {
       throw new IOException("Path [" + dir + "] does not exist.");
     }
     this.dir = dir;
+    this.timer = new Timer(dir.getAbsolutePath(), true);
+    timer.schedule(new TimerTask() {
+      @Override
+      public void run() {
+        try {
+          releaseOldLayers();
+        } catch (IOException e) {
+          LOG.error("Unknown error during release of old layers.", e);
+        }
+      }
+    }, TimeUnit.SECONDS.toMillis(10), TimeUnit.SECONDS.toMillis(10));
+  }
+
+  @Override
+  public void close() throws IOException {
+    timer.cancel();
+    timer.purge();
+    super.close();
   }
 
   @Override
@@ -44,7 +71,9 @@ public class FileLayerManager extends LayerManager {
 
   @Override
   protected LayerInput openLayer(long layerId) throws IOException {
-    RandomAccessFile rand = new RandomAccessFile(new File(dir, Long.toString(layerId)), "r");
+    File file = new File(dir, Long.toString(layerId));
+    LOG.info("open layer {}", file);
+    RandomAccessFile rand = new RandomAccessFile(file, "r");
     return LayerInput.toLayerInput(rand);
   }
 
@@ -61,6 +90,10 @@ public class FileLayerManager extends LayerManager {
 
   @Override
   protected void removeLayer(long layerId) throws IOException {
-    new File(dir, Long.toString(layerId)).delete();
+    File file = new File(dir, Long.toString(layerId));
+    LOG.info("removing file {}", file);
+    if (!file.delete()) {
+      throw new IOException("Can't remove old layer " + layerId);
+    }
   }
 }
