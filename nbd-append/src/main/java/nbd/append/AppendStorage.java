@@ -6,15 +6,21 @@ import nbd.NBDCommand;
 import nbd.NBDStorage;
 import nbd.append.layer.LayerStorage;
 
-public abstract class AppendStorage extends NBDStorage {
+public class AppendStorage extends NBDStorage {
 
   protected final LayerStorage layerStorage;
   protected final int blockSize;
+  protected final long size;
 
-  public AppendStorage(String exportName, LayerStorage layerStorage, int blockSize) {
+  public AppendStorage(String exportName, LayerStorage layerStorage, int blockSize, long size) {
     super(exportName);
+    this.size = normalize(blockSize, size);
     this.layerStorage = layerStorage;
     this.blockSize = blockSize;
+  }
+
+  private static long normalize(int blockSize, long size) {
+    return (size / blockSize) * blockSize;
   }
 
   @Override
@@ -128,9 +134,19 @@ public abstract class AppendStorage extends NBDStorage {
     }
   }
 
-  public static void performAction(byte[] resultBlock, long position, int blockSize, LayerStorage layerStorage,
-      Action action) throws IOException {
+  @Override
+  public void connect() throws IOException {
 
+  }
+
+  @Override
+  public void disconnect() throws IOException {
+
+  }
+
+  @Override
+  public long size() {
+    return size;
   }
 
   public static int getBlockOffset(long position, int blockSize) {

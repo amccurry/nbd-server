@@ -3,6 +3,7 @@ package nbd.append.layer;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.util.Arrays;
 import java.util.Timer;
@@ -50,7 +51,7 @@ public class FileLayerManager extends LayerManager {
   protected LayerOutput newOutput(long layerId) throws IOException {
     File file = new File(dir, Long.toString(layerId));
     file.getParentFile().mkdirs();
-    return LayerOutput.toLayerOutput(new FileOutputStream(file));
+    return toLayerOutput(new FileOutputStream(file));
   }
 
   @Override
@@ -73,7 +74,7 @@ public class FileLayerManager extends LayerManager {
     File file = new File(dir, Long.toString(layerId));
     LOG.info("open layer {}", file);
     RandomAccessFile rand = new RandomAccessFile(file, "r");
-    return LayerInput.toLayerInput(rand);
+    return toLayerInput(rand);
   }
 
   private long[] toLongArray(String[] layers) {
@@ -94,5 +95,13 @@ public class FileLayerManager extends LayerManager {
     if (!file.delete()) {
       throw new IOException("Can't remove old layer " + layerId);
     }
+  }
+
+  public static LayerInput toLayerInput(RandomAccessFile randomAccessFile) {
+    return new LayerInputRandomAccessFile(randomAccessFile);
+  }
+
+  public static LayerOutput toLayerOutput(OutputStream outputStream) {
+    return new LayerOutputStream(outputStream);
   }
 }

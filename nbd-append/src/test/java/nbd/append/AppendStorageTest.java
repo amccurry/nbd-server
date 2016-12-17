@@ -2,6 +2,7 @@ package nbd.append;
 
 import static org.junit.Assert.*;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -11,6 +12,8 @@ import java.util.Random;
 import org.junit.Before;
 import org.junit.Test;
 
+import nbd.NBDCommand;
+import nbd.append.layer.FileLayerManager;
 import nbd.append.layer.LayerStorage;
 
 public class AppendStorageTest {
@@ -20,7 +23,6 @@ public class AppendStorageTest {
   @Before
   public void setup() {
     seed = TestUtils.getSeed();
-    seed = -4007063037374344993l;
   }
 
   @Test
@@ -31,8 +33,48 @@ public class AppendStorageTest {
   }
 
   @Test
-  public void writeDataFromLayerStorageTest() {
-    // @TODO
+  public void validateDataFromLayerStorageTest() throws Exception {
+    Random randomSetup = new Random(seed);
+    File dir = new File("./target/tmp/" + getClass().getName());
+    TestUtils.rmr(dir);
+    dir.mkdirs();
+    int blockSize = randomSetup.nextInt(1000) + 1;
+    int maxCacheMemory = randomSetup.nextInt(1000000);
+    int size = 1024 * 1024 * 1024;
+
+    String exportName = "test";
+    FileLayerManager layerManager = new FileLayerManager(blockSize, maxCacheMemory, new File(dir, exportName));
+    layerManager.open();
+    size = (size / blockSize) * blockSize;
+
+    try (AppendStorage storage = new AppendStorage("test", layerManager, blockSize, size)) {
+
+      int bufSize = randomSetup.nextInt(1000) + 1;
+      byte[] bufWrite = new byte[bufSize];
+      byte[] bufRead = new byte[bufSize];
+      int passes = 10;
+      {
+        Random random = new Random(seed);
+        for (int i = 0; i < passes; i++) {
+          random.nextBytes(bufWrite);
+          int pos = random.nextInt(size / 512) * 512;
+          storage.write(bufWrite, pos).call();
+          storage.read(bufRead, pos).call();
+          assertArrayEquals(bufWrite, bufRead);
+        }
+      }
+      {
+        storage.flush().call();
+        Random random = new Random(seed);
+        for (int i = 0; i < passes; i++) {
+          random.nextBytes(bufWrite);
+          int pos = random.nextInt(size / 512) * 512;
+          NBDCommand command = storage.read(bufRead, pos);
+          command.call();
+          assertArrayEquals(bufWrite, bufRead);
+        }
+      }
+    }
   }
 
   private void runReadTest() {
