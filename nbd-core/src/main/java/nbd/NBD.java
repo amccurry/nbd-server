@@ -21,15 +21,26 @@ import com.google.common.primitives.Ints;
 import com.google.common.primitives.Longs;
 
 public class NBD {
-  public static final int NBD_OK              = 0       ; /* OK */
-  public static final byte[] NBD_OK_BYTES     = new byte[4];
+  public static final int NBD_OK = 0; /* OK */
+  public static final byte[] NBD_OK_BYTES = new byte[4];
 
-  public static final int NBD_FLAG_HAS_FLAGS  = (1 << 0);	/* Flags are there */
-  public static final int NBD_FLAG_READ_ONLY  =	(1 << 1);	/* Device is read-only */
-  public static final int NBD_FLAG_SEND_FLUSH =	(1 << 2);	/* Send FLUSH */
-  public static final int NBD_FLAG_SEND_FUA	  = (1 << 3);	/* Send FUA (Force Unit Access) */
-  public static final int NBD_FLAG_ROTATIONAL =	(1 << 4);	/* Use elevator algorithm - rotational media */
-  public static final int NBD_FLAG_SEND_TRIM	= (1 << 5);	/* Send TRIM (discard) */
+  public static final int NBD_FLAG_HAS_FLAGS = (1 << 0); /* Flags are there */
+  public static final int NBD_FLAG_READ_ONLY = (1 << 1); /*
+                                                          * Device is read-only
+                                                          */
+  public static final int NBD_FLAG_SEND_FLUSH = (1 << 2); /* Send FLUSH */
+  public static final int NBD_FLAG_SEND_FUA = (1 << 3); /*
+                                                         * Send FUA (Force Unit
+                                                         * Access)
+                                                         */
+  public static final int NBD_FLAG_ROTATIONAL = (1 << 4); /*
+                                                           * Use elevator
+                                                           * algorithm -
+                                                           * rotational media
+                                                           */
+  public static final int NBD_FLAG_SEND_TRIM = (1 << 5); /*
+                                                          * Send TRIM (discard)
+                                                          */
 
   public static final int NBD_REQUEST_MAGIC = 0x25609513;
   public static final byte[] NBD_REQUEST_MAGIC_BYTES = Ints.toByteArray(NBD_REQUEST_MAGIC);
@@ -51,12 +62,7 @@ public class NBD {
   public static final byte[] LEASE_KEY = "lease".getBytes();
 
   enum Command {
-    READ,
-    WRITE,
-    DISCONNECT,
-    FLUSH,
-    TRIM,
-    CACHE
+    READ, WRITE, DISCONNECT, FLUSH, TRIM, CACHE
   }
 
   public static final int NBD_OPT_EXPORT_NAME = 1;

@@ -46,7 +46,7 @@ public class NBDServer {
 
   public static void main(String[] args) throws IOException {
     ListeningExecutorService service = MoreExecutors.listeningDecorator(Executors.newCachedThreadPool());
-    
+
     // File dir = new File(args[0]);
     // int maxCacheMemory = 32 * 1024 * 1024;
     // int blockSize = 4 * 1024;
@@ -59,7 +59,7 @@ public class NBDServer {
     // maxCacheMemory, size);
     // }
     // };
-    
+
     File pluginDir = new File(args[0]);
     PluginNBDStorageFactory storageFactory = new PluginNBDStorageFactory(pluginDir);
     try (ServerSocket ss = new ServerSocket(10809)) {

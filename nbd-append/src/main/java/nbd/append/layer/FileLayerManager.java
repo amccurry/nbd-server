@@ -49,8 +49,7 @@ public class FileLayerManager extends LayerManager {
   @Override
   protected LayerOutput newOutput(long layerId) throws IOException {
     File file = new File(dir, Long.toString(layerId));
-    file.getParentFile()
-        .mkdirs();
+    file.getParentFile().mkdirs();
     return LayerOutput.toLayerOutput(new FileOutputStream(file));
   }
 

@@ -16,7 +16,7 @@ public interface LayerInput extends Seekable, Closeable {
   int read(long position) throws IOException;
 
   void read(long position, byte[] buf, int offset, int length) throws IOException;
-  
+
   DataInput getDataInput(long position) throws IOException;
 
   public static LayerInput toLayerInput(RandomAccessFile randomAccessFile) {

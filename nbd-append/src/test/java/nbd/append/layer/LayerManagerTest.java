@@ -84,8 +84,8 @@ public class LayerManagerTest {
     for (int p = 0; p < passes; p++) {
       int numberOfBlocks = random.nextInt(MAX_NUMBER_OF_BLOCKS);
       int maxBlockId = random.nextInt(MAX_BLOCK_ID);
-      System.out.println(
-          "Running pass [" + p + "] numberOfBlocks [" + numberOfBlocks + "] maxBlockId [" + maxBlockId + "]");
+      System.out
+          .println("Running pass [" + p + "] numberOfBlocks [" + numberOfBlocks + "] maxBlockId [" + maxBlockId + "]");
       BitSet bitSet = new BitSet();
       try (RandomAccessFile rand = new RandomAccessFile(
           new File(root, "rand-follower-" + pass + "-" + getClass().getName()), "rw")) {

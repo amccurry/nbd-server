@@ -73,8 +73,7 @@ public class FileStorage extends NBDStorage {
   public NBDCommand flush() {
     return () -> {
       synchronized (raf) {
-        raf.getFD()
-           .sync();
+        raf.getFD().sync();
       }
     };
   }
