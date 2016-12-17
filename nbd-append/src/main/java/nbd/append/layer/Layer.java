@@ -2,7 +2,9 @@ package nbd.append.layer;
 
 import java.io.Closeable;
 import java.io.DataInput;
+import java.io.DataInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.TreeSet;
@@ -51,11 +53,14 @@ public class Layer {
     public ReaderLayerInput(LayerInput input) throws IOException {
       checkHeader(input);
       this.input = input;
-      layerId = input.readLong(4);
-      blockSize = input.readInt(4 + 8);
+      input.seek(4);
+      layerId = input.readLong();
+      blockSize = input.readInt();
       headerLength = 4 + 8 + 4;
-      long position = input.readLong(input.length() - 8);
-      DataInput dataInput = input.getDataInput(position);
+      input.seek(input.length() - 8);
+      long position = input.readLong();
+      input.seek(position);
+      DataInput dataInput = getDataInput(input);
       {
         RoaringBitmap roaringBitmap = new RoaringBitmap();
         roaringBitmap.deserialize(dataInput);
@@ -92,7 +97,8 @@ public class Layer {
       } else if (dataPresent.contains(blockId)) {
         int numberOfBlockIntoTheDataFile = findBitmapOffset(blockId);
         long pos = ((long) numberOfBlockIntoTheDataFile * (long) blockSize) + (long) headerLength;
-        input.read(pos, buf, offset, buf.length);
+        input.seek(pos);
+        input.read(buf, offset, buf.length);
         return true;
       }
       return false;
@@ -117,7 +123,8 @@ public class Layer {
 
     private void checkHeader(LayerInput inputReader) throws IOException {
       byte[] buf = new byte[4];
-      inputReader.read(0, buf, 0, buf.length);
+      inputReader.seek(0);
+      inputReader.read(buf, 0, buf.length);
       if (!Arrays.equals(buf, HEADER)) {
         throw new IOException("Not a valid layer file.");
       }
@@ -335,6 +342,21 @@ public class Layer {
       return dataPresent;
     }
 
+  }
+
+  public static DataInput getDataInput(LayerInput input) {
+    return new DataInputStream(new InputStream() {
+      @Override
+      public int read() throws IOException {
+        return (0xFF) & input.readByte();
+      }
+
+      @Override
+      public int read(byte[] b, int off, int len) throws IOException {
+        input.read(b, off, len);
+        return len;
+      }
+    });
   }
 
 }
