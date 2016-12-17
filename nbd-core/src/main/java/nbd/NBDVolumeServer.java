@@ -17,9 +17,10 @@
 */
 package nbd;
 
-import static nbd.NBD.*;
+import static nbd.NBD.EMPTY_124;
 import static nbd.NBD.NBD_FLAG_HAS_FLAGS;
 import static nbd.NBD.NBD_FLAG_SEND_FLUSH;
+import static nbd.NBD.NBD_FLAG_SEND_TRIM;
 import static nbd.NBD.NBD_OK_BYTES;
 import static nbd.NBD.NBD_REPLY_MAGIC_BYTES;
 import static nbd.NBD.NBD_REQUEST_MAGIC;
@@ -28,6 +29,7 @@ import java.io.Closeable;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,6 +56,7 @@ public class NBDVolumeServer implements Closeable {
   private final NBDStorage storage;
   private final Closer closer;
   private final ListeningExecutorService service;
+  private final AtomicBoolean running = new AtomicBoolean(true);
 
   public NBDVolumeServer(NBDStorage storage, DataInputStream in, DataOutputStream out, ListeningExecutorService service)
       throws IOException {
@@ -84,7 +87,7 @@ public class NBDVolumeServer implements Closeable {
     out.write(EMPTY_124);
     out.flush();
 
-    while (true) {
+    while (running.get()) {
       int requestMagic = in.readInt();// MAGIC
       if (requestMagic != NBD_REQUEST_MAGIC) {
         throw new IllegalArgumentException("Invalid magic number for request: " + requestMagic);
@@ -93,7 +96,7 @@ public class NBDVolumeServer implements Closeable {
       long handle = in.readLong();
       UnsignedLong offset = UnsignedLong.fromLongBits(in.readLong());
       UnsignedInteger requestLength = UnsignedInteger.fromIntBits(in.readInt());
-      CommandHandler commandHandler = new CommandHandler(requestType, handle, offset, requestLength, service);
+      CommandHandler commandHandler = new CommandHandler(requestType, handle, offset, requestLength, service, running);
       switch (requestType) {
       case READ:
         performRead(handle, commandHandler);
@@ -127,8 +130,13 @@ public class NBDVolumeServer implements Closeable {
         LOGGER.info("Trim complete: " + (System.currentTimeMillis() - start) + "ms");
       } catch (Throwable t) {
         LOGGER.error("trim error", t);
+        shutdownConnection();
       }
     });
+  }
+
+  private void shutdownConnection() {
+    running.set(false);
   }
 
   private void performDisconnect() throws IOException {
@@ -146,6 +154,7 @@ public class NBDVolumeServer implements Closeable {
         LOGGER.info("Flush complete: " + (System.currentTimeMillis() - start) + "ms");
       } catch (Throwable t) {
         LOGGER.error("flushing", t);
+        shutdownConnection();
       }
     });
   }
@@ -164,6 +173,7 @@ public class NBDVolumeServer implements Closeable {
         writeReplyHeaderAndFlush(handle);
       } catch (Throwable t) {
         LOGGER.error("writing " + buffer.length + " from " + commandHandler.offset + "", t);
+        shutdownConnection();
       }
     });
   }
@@ -187,6 +197,7 @@ public class NBDVolumeServer implements Closeable {
         }
       } catch (Throwable t) {
         LOGGER.error("reading " + buffer.length + " from " + commandHandler.offset + "", t);
+        shutdownConnection();
       }
     });
   }
@@ -204,14 +215,16 @@ public class NBDVolumeServer implements Closeable {
     private final UnsignedLong offset;
     private final UnsignedInteger requestLength;
     private final ListeningExecutorService service;
+    private final AtomicBoolean running;
 
     CommandHandler(Command requestType, long handle, UnsignedLong offset, UnsignedInteger requestLength,
-        ListeningExecutorService service) {
+        ListeningExecutorService service, AtomicBoolean running) {
       this.requestType = requestType;
       this.handle = handle;
       this.offset = offset;
       this.requestLength = requestLength;
       this.service = service;
+      this.running = running;
     }
 
     @Override
@@ -233,6 +246,7 @@ public class NBDVolumeServer implements Closeable {
         public void onFailure(Throwable t) {
           LOGGER.error("requestType [" + requestType + "] handle [" + handle + "] offset [" + offset
               + "] requestLength [" + requestLength + "]", t);
+          running.set(false);
         }
       });
     }

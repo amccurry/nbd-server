@@ -1,12 +1,16 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>nbd</groupId>
-	<artifactId>ndb-server</artifactId>
-	<version>0.1-SNAPSHOT</version>
-	<packaging>jar</packaging>
-	<name>ndb-server</name>
-
+	<artifactId>nbd-server</artifactId>
+	<version>1.0-SNAPSHOT</version>
+	<packaging>pom</packaging>
+	<modules>
+		<module>nbd-core</module>
+		<module>nbd-spi</module>
+		<module>nbd-file</module>
+		<module>nbd-append</module>
+	</modules>
 	<properties>
 		<junit.version>4.11</junit.version>
 		<java.version>1.8</java.version>
@@ -14,12 +18,37 @@
 		<slf4j.version>1.7.21</slf4j.version>
 		<roaringbitmap.version>0.6.27</roaringbitmap.version>
 	</properties>
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>nbd</groupId>
+				<artifactId>nbd-spi</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>org.roaringbitmap</groupId>
+				<artifactId>RoaringBitmap</artifactId>
+				<version>${roaringbitmap.version}</version>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 
-	<dependencies>
+  <dependencies>
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <version>1.16.10</version>
+      <scope>provided</scope>
+    </dependency>
 		<dependency>
-			<groupId>org.roaringbitmap</groupId>
-			<artifactId>RoaringBitmap</artifactId>
-			<version>${roaringbitmap.version}</version>
+			<groupId>commons-io</groupId>
+			<artifactId>commons-io</artifactId>
+			<version>2.5</version>
+		</dependency>
+		<dependency>
+			<groupId>com.google.guava</groupId>
+			<artifactId>guava</artifactId>
+			<version>${guava.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.slf4j</groupId>
@@ -32,31 +61,24 @@
 			<version>${slf4j.version}</version>
 		</dependency>
 		<dependency>
-			<groupId>commons-io</groupId>
-			<artifactId>commons-io</artifactId>
-			<version>2.5</version>
-		</dependency>
-		<dependency>
-			<groupId>com.google.guava</groupId>
-			<artifactId>guava</artifactId>
-			<version>${guava.version}</version>
-		</dependency>
-		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
 			<version>${junit.version}</version>
 			<scope>test</scope>
 		</dependency>
-	</dependencies>
+  </dependencies>
 	<build>
-		<plugins>
-			<plugin>
-				<artifactId>maven-compiler-plugin</artifactId>
-				<configuration>
-					<source>${java.version}</source>
-					<target>${java.version}</target>
-				</configuration>
-			</plugin>
-		</plugins>
+		<pluginManagement>
+			<plugins>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-compiler-plugin</artifactId>
+					<configuration>
+						<source>1.8</source>
+						<target>1.8</target>
+					</configuration>
+				</plugin>
+			</plugins>
+		</pluginManagement>
 	</build>
 </project>

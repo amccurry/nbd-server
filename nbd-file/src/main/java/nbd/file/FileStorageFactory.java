@@ -18,16 +18,22 @@
 package nbd.file;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
 
 import nbd.NBDStorage;
 import nbd.NBDStorageFactory;
 
 public class FileStorageFactory extends NBDStorageFactory {
 
+  private static final String FILE = "file";
+  private static final String DIR = "dir";
   private final File dir;
 
-  public FileStorageFactory(File dir) {
-    this.dir = dir;
+  public FileStorageFactory() {
+    super(FILE);
+    String dirStr = getRequiredProperty(DIR);
+    this.dir = new File(dirStr);
   }
 
   @Override
@@ -35,4 +41,14 @@ public class FileStorageFactory extends NBDStorageFactory {
     return new FileStorage(new File(dir, exportName));
   }
 
+  @Override
+  public void create(String exportName, int blockSize, long size) throws IOException {
+    File file = new File(dir, exportName);
+    if (file.exists()) {
+      throw new IOException("export " + exportName + " already exists");
+    }
+    try (RandomAccessFile rand = new RandomAccessFile(file, "rw")) {
+      rand.setLength(size);
+    }
+  }
 }

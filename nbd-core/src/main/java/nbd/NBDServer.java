@@ -40,29 +40,30 @@ import com.google.common.io.Closer;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
 
-import nbd.append.FileAppendStorage;
-
 public class NBDServer {
 
   private static Logger LOGGER = LoggerFactory.getLogger(NBDServer.class);
 
   public static void main(String[] args) throws IOException {
     ListeningExecutorService service = MoreExecutors.listeningDecorator(Executors.newCachedThreadPool());
-    LOGGER.info("Listening for client connections");
-    File dir = new File(args[0]);
-    int maxCacheMemory = 32 * 1024 * 1024;
-    int blockSize = 4 * 1024;
-    long size = 1024l * 1024l * 1024l * 1024l;
-    NBDStorageFactory storageFactory = new NBDStorageFactory() {
-      @Override
-      public synchronized NBDStorage newStorage(String exportName) throws IOException {
-        return FileAppendStorage.create(exportName, dir, blockSize, maxCacheMemory, size);
-      }
-    };
-
-    // FileStorageFactory storageFactory = new FileStorageFactory(new
-    // File("./mnt"));
+    
+    // File dir = new File(args[0]);
+    // int maxCacheMemory = 32 * 1024 * 1024;
+    // int blockSize = 4 * 1024;
+    // long size = 1024l * 1024l * 1024l * 1024l;
+    // NBDStorageFactory storageFactory = new NBDStorageFactory() {
+    // @Override
+    // public synchronized NBDStorage newStorage(String exportName) throws
+    // IOException {
+    // return FileAppendStorage.create(exportName, dir, blockSize,
+    // maxCacheMemory, size);
+    // }
+    // };
+    
+    File pluginDir = new File(args[0]);
+    PluginNBDStorageFactory storageFactory = new PluginNBDStorageFactory(pluginDir);
     try (ServerSocket ss = new ServerSocket(10809)) {
+      LOGGER.info("Listening for client connections");
       while (true) {
         service.submit(new VolumeServerRunner(ss.accept(), storageFactory, service));
       }
@@ -87,8 +88,7 @@ public class NBDServer {
     public void run() {
       try {
         InetSocketAddress remoteSocketAddress = (InetSocketAddress) socket.getRemoteSocketAddress();
-        LOGGER.info("Client connected from: {}", remoteSocketAddress.getAddress()
-                                                                    .getHostAddress());
+        LOGGER.info("Client connected from: {}", remoteSocketAddress.getAddress().getHostAddress());
         try (DataInputStream in = new DataInputStream(socket.getInputStream())) {
           try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()))) {
             String exportName = performHandShake(in, out);

@@ -20,5 +20,34 @@ package nbd;
 import java.io.IOException;
 
 public abstract class NBDStorageFactory {
+
+  private final String driverName;
+
+  protected NBDStorageFactory(String driverName) {
+    this.driverName = driverName;
+  }
+
+  public final String getDriverName() {
+    return driverName;
+  }
+
   public abstract NBDStorage newStorage(String exportName) throws IOException;
+
+  public abstract void create(String exportName, int blockSize, long size) throws IOException;
+
+  protected String getRequiredProperty(String name) {
+    String property = getOptionalProperty(name);
+    if (property == null) {
+      throw new MissingPropertyException("Property " + getPropertyName(name) + " is required");
+    }
+    return property;
+  }
+
+  protected String getOptionalProperty(String name) {
+    return System.getProperty(getPropertyName(name));
+  }
+
+  protected String getPropertyName(String name) {
+    return getClass().getName() + "." + name;
+  }
 }
