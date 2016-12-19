@@ -20,8 +20,11 @@ package nbd.append.layer;
 import java.io.Closeable;
 import java.io.DataInput;
 import java.io.DataInputStream;
+import java.io.DataOutput;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.TreeSet;
@@ -77,7 +80,7 @@ public class Layer {
       input.seek(input.length() - 8);
       long position = input.readLong();
       input.seek(position);
-      DataInput dataInput = getDataInput(input);
+      DataInput dataInput = toDataInput(input);
       {
         RoaringBitmap roaringBitmap = new RoaringBitmap();
         roaringBitmap.deserialize(dataInput);
@@ -253,8 +256,9 @@ public class Layer {
     @Override
     public void close() throws IOException {
       long position = output.getPosition();
-      dataPresent.serialize(output);
-      zerosPresent.serialize(output);
+      DataOutput dataOutput = toDataOutput(output);
+      dataPresent.serialize(dataOutput);
+      zerosPresent.serialize(dataOutput);
       output.writeLong(position);
       output.close();
     }
@@ -361,7 +365,7 @@ public class Layer {
 
   }
 
-  public static DataInput getDataInput(LayerInput input) {
+  public static DataInput toDataInput(LayerInput input) {
     return new DataInputStream(new InputStream() {
       @Override
       public int read() throws IOException {
@@ -372,6 +376,21 @@ public class Layer {
       public int read(byte[] b, int off, int len) throws IOException {
         input.read(b, off, len);
         return len;
+      }
+    });
+  }
+
+  public static DataOutput toDataOutput(LayerOutput output) {
+    return new DataOutputStream(new OutputStream() {
+
+      @Override
+      public void write(int b) throws IOException {
+        output.writeByte((byte) b);
+      }
+
+      @Override
+      public void write(byte[] b, int off, int len) throws IOException {
+        output.write(b, off, len);
       }
     });
   }

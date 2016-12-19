@@ -20,6 +20,7 @@ package nbd;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
+import java.util.Properties;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 
@@ -36,22 +37,22 @@ public class PluginNBDStorageFactory extends NBDStorageFactory {
 
   private final Map<String, NBDStorageFactory> factoryMap = new MapMaker().makeMap();
 
-  public PluginNBDStorageFactory(File dir) throws IOException {
+  public PluginNBDStorageFactory(File dir, boolean skipErrors) throws IOException {
     super("plugin");
-    loadPlugins(dir);
+    loadPlugins(dir, skipErrors);
   }
 
-  private void loadPlugins(File dir) throws IOException {
+  private void loadPlugins(File dir, boolean skipErrors) throws IOException {
     LOGGER.info("Loading plugins from {}", dir.getAbsolutePath());
     if (!dir.isDirectory()) {
       throw new IOException("Plugins path [" + dir + "] is not directory.");
     }
     for (File f : dir.listFiles()) {
-      loadPlugin(f);
+      loadPlugin(f, skipErrors);
     }
   }
 
-  private void loadPlugin(File dir) throws IOException {
+  private void loadPlugin(File dir, boolean skipErrors) throws IOException {
     if (!dir.isDirectory()) {
       LOGGER.info("Skipping path {} because it's not a directory.", dir);
       return;
@@ -69,11 +70,15 @@ public class PluginNBDStorageFactory extends NBDStorageFactory {
         factoryMap.put(driverName, factory);
       }
     } catch (ServiceConfigurationError e) {
-      if (e.getCause() instanceof MissingPropertyException) {
-        System.err.println(e.getCause().getMessage());
-        System.exit(1);
+      if (skipErrors) {
+        LOGGER.error("Could not load plugin from dir {}", dir);
+      } else {
+        if (e.getCause() instanceof MissingPropertyException) {
+          System.err.println(e.getCause().getMessage());
+          System.exit(1);
+        }
+        throw e;
       }
-      throw e;
     }
   }
 
@@ -86,11 +91,15 @@ public class PluginNBDStorageFactory extends NBDStorageFactory {
   }
 
   @Override
-  public void create(String driverPlusExportName, int blockSize, long size) throws IOException {
+  public void create(String driverPlusExportName, int blockSize, long size, Properties optionalProperties)
+      throws IOException {
     String driverName = getDriverName(driverPlusExportName);
     String exportName = getExportName(driverPlusExportName);
     NBDStorageFactory nbdStorageFactory = getStorageFactory(driverName);
-    nbdStorageFactory.create(exportName, blockSize, size);
+    Thread currentThread = Thread.currentThread();
+    ClassLoader contextClassLoader = currentThread.getContextClassLoader();
+    currentThread.setContextClassLoader(cl);
+    nbdStorageFactory.create(exportName, blockSize, size, optionalProperties);
   }
 
   private String getExportName(String s) throws IOException {

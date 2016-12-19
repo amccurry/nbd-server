@@ -62,11 +62,16 @@ public class AppendStorage extends NBDStorage {
 
   @Override
   public NBDCommand flush() {
-    return () -> layerStorage.flush();
+    return () -> flushAndRelease(layerStorage);
   }
 
   interface Action {
     void action(int blockId, byte[] block) throws IOException;
+  }
+
+  public static void flushAndRelease(LayerStorage layerStorage) throws IOException {
+    layerStorage.flush();
+    layerStorage.releaseOldLayers();
   }
 
   public static void trimDataFromLayerStorage(long length, long position, int blockSize, LayerStorage layerStorage)

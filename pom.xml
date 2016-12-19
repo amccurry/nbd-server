@@ -10,6 +10,7 @@
 		<module>nbd-spi</module>
 		<module>nbd-file</module>
 		<module>nbd-append</module>
+		<module>nbd-hdfs</module>
 	</modules>
 	<properties>
 		<junit.version>4.11</junit.version>
@@ -23,6 +24,11 @@
 			<dependency>
 				<groupId>nbd</groupId>
 				<artifactId>nbd-spi</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>nbd</groupId>
+				<artifactId>nbd-append</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>

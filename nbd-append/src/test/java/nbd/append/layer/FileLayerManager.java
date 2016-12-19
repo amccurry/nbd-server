@@ -23,9 +23,6 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.util.Arrays;
-import java.util.Timer;
-import java.util.TimerTask;
-import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,7 +32,6 @@ public class FileLayerManager extends LayerManager {
   private static final Logger LOG = LoggerFactory.getLogger(FileLayerManager.class);
 
   private final File dir;
-  private final Timer timer;
 
   public FileLayerManager(int blockSize, int maxCacheMemory, File dir) throws IOException {
     super(blockSize, maxCacheMemory);
@@ -44,23 +40,10 @@ public class FileLayerManager extends LayerManager {
       throw new IOException("Path [" + dir + "] does not exist.");
     }
     this.dir = dir;
-    this.timer = new Timer(dir.getAbsolutePath(), true);
-    timer.schedule(new TimerTask() {
-      @Override
-      public void run() {
-        try {
-          releaseOldLayers();
-        } catch (IOException e) {
-          LOG.error("Unknown error during release of old layers.", e);
-        }
-      }
-    }, TimeUnit.SECONDS.toMillis(10), TimeUnit.SECONDS.toMillis(10));
   }
 
   @Override
   public void close() throws IOException {
-    timer.cancel();
-    timer.purge();
     super.close();
   }
 

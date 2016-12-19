@@ -18,6 +18,7 @@
 package nbd;
 
 import java.io.IOException;
+import java.util.Properties;
 
 public abstract class NBDStorageFactory {
 
@@ -33,7 +34,8 @@ public abstract class NBDStorageFactory {
 
   public abstract NBDStorage newStorage(String exportName) throws IOException;
 
-  public abstract void create(String exportName, int blockSize, long size) throws IOException;
+  public abstract void create(String exportName, int blockSize, long size, Properties optionalProperties)
+      throws IOException;
 
   protected String getRequiredProperty(String name) {
     String property = getOptionalProperty(name);

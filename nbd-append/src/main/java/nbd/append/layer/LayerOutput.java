@@ -18,10 +18,29 @@
 package nbd.append.layer;
 
 import java.io.Closeable;
-import java.io.DataOutput;
+import java.io.IOException;
 
-public interface LayerOutput extends DataOutput, Closeable {
+public interface LayerOutput extends Closeable {
 
-  long getPosition();
+  long getPosition() throws IOException;
 
+  void writeByte(byte b) throws IOException;
+
+  default void write(byte[] buf) throws IOException {
+    write(buf, 0, buf.length);
+  }
+
+  void write(byte[] buf, int offset, int length) throws IOException;
+
+  default void writeInt(int i) throws IOException {
+    writeByte((byte) (i >> 24));
+    writeByte((byte) (i >> 16));
+    writeByte((byte) (i >> 8));
+    writeByte((byte) i);
+  }
+
+  default void writeLong(long i) throws IOException {
+    writeInt((int) (i >> 32));
+    writeInt((int) i);
+  }
 }

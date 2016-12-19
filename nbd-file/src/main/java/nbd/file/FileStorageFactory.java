@@ -20,6 +20,7 @@ package nbd.file;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.util.Properties;
 
 import nbd.NBDStorage;
 import nbd.NBDStorageFactory;
@@ -42,7 +43,7 @@ public class FileStorageFactory extends NBDStorageFactory {
   }
 
   @Override
-  public void create(String exportName, int blockSize, long size) throws IOException {
+  public void create(String exportName, int blockSize, long size, Properties optionalProperties) throws IOException {
     File file = new File(dir, exportName);
     if (file.exists()) {
       throw new IOException("export " + exportName + " already exists");
