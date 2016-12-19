@@ -27,6 +27,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.roaringbitmap.RoaringBitmap;
@@ -65,22 +67,59 @@ public abstract class LayerManager implements LayerStorage {
   private final Object lock = new Object();
   private final int blockSize;
   private final int maxCacheMemory;
+  private final int maxNumberOfBlocks;
   private final AtomicReference<ReaderState> readerState = new AtomicReference<ReaderState>();
+  private final Thread thread;
+  private final AtomicBoolean open = new AtomicBoolean(false);
   private CacheContext currentWriter;
 
-  public LayerManager(int blockSize, int maxCacheMemory) throws IOException {
+  public LayerManager(long size, int blockSize, int maxCacheMemory) throws IOException {
     this.blockSize = blockSize;
     this.maxCacheMemory = maxCacheMemory;
+    this.maxNumberOfBlocks = (int) (size % blockSize == 0 ? size / blockSize : (size / blockSize) + 1);
     readerState.set(new ReaderState(blockSize, null));
+    thread = createCompactionThread();
+  }
+
+  private Thread createCompactionThread() {
+    Thread thread = new Thread(new Runnable() {
+      @Override
+      public void run() {
+        while (open.get()) {
+          try {
+            executeCompaction();
+          } catch (Exception e) {
+            LOG.error("Unknown error during compaction.", e);
+          }
+          try {
+            Thread.sleep(TimeUnit.SECONDS.toMillis(5));
+          } catch (InterruptedException e) {
+            return;
+          }
+        }
+      }
+
+    });
+    thread.setDaemon(true);
+    thread.setName("Compaction");
+    return thread;
+  }
+
+  private void executeCompaction() throws Exception {
+    LOG.info("Running compaction");
+    compact(TimeUnit.MILLISECONDS.toNanos(400));
   }
 
   @Override
   public void open() throws IOException {
     refeshReaders();
+    open.set(true);
+    thread.start();
   }
 
   @Override
   public void close() throws IOException {
+    open.set(false);
     tryToFlush();
   }
 
@@ -92,12 +131,12 @@ public abstract class LayerManager implements LayerStorage {
   @Override
   public void releaseOldLayers() throws IOException {
     synchronized (lock) {
-      tryToFlush();
+//      tryToFlush();
       refeshReaders();
       ReaderState state = readerState.get();
       List<Reader> readers = new ArrayList<>(state.readers);
       for (int i = 0; i < readers.size(); i++) {
-        if (!isInUse(readers, i)) {
+        if (isNotInUse(readers, i)) {
           closeAndRemove(readers.get(i));
         }
       }
@@ -111,28 +150,10 @@ public abstract class LayerManager implements LayerStorage {
     removeLayer(reader.getLayerId());
   }
 
-  private boolean isInUse(List<Reader> readers, int readerId) throws IOException {
-    Reader reader = readers.get(readerId);
-    RoaringBitmap readerData = new RoaringBitmap();
-    orData(reader, readerData);
-
-    RoaringBitmap existingData = new RoaringBitmap();
-    for (int i = 0; i < readerId; i++) {
-      Reader r = readers.get(i);
-      orData(r, existingData);
-    }
-
-    int card1 = readerData.getCardinality();
-    readerData.and(existingData);
-    int card2 = readerData.getCardinality();
-    return card1 != card2;
-  }
-
-  private void orData(Reader reader, RoaringBitmap readerData) throws IOException {
-    RoaringBitmap dataBlocks = (RoaringBitmap) reader.getDataBlocks();
-    RoaringBitmap emptyBlocks = (RoaringBitmap) reader.getEmptyBlocks();
-    readerData.or(dataBlocks);
-    readerData.or(emptyBlocks);
+  private boolean isNotInUse(List<Reader> readers, int readerId) throws IOException {
+    RoaringBitmap visibleEmptyBlocks = getVisibleEmptyBlocks(readerId, readers);
+    RoaringBitmap visibleDataBlocks = getVisibleDataBlocks(readerId, readers);
+    return visibleDataBlocks.getCardinality() == 0 && visibleEmptyBlocks.getCardinality() == 0;
   }
 
   @Override
@@ -161,6 +182,59 @@ public abstract class LayerManager implements LayerStorage {
       Writer writer = getWriter(blockId);
       writer.append(blockId, buf, off);
     }
+  }
+
+  @Override
+  public void compact(long maxTimeLockTimeNs) throws IOException {
+    synchronized (lock) {
+      tryToFlush();
+      refeshReaders();
+      ReaderState state = readerState.get();
+      int size = state.readers.size();
+      int indexOfReaderToBeCompacted = size - 1;
+      Reader reader = state.readers.get(indexOfReaderToBeCompacted);
+      LOG.info("Starting compaction of layer {}", reader.getLayerId());
+      RoaringBitmap visibleEmptyBlocks = getVisibleEmptyBlocks(indexOfReaderToBeCompacted, state.readers);
+      RoaringBitmap visibleDataBlocks = getVisibleDataBlocks(indexOfReaderToBeCompacted, state.readers);
+      LOG.info("Visible empty block {}", visibleEmptyBlocks.getCardinality());
+      for (Integer blockId : visibleEmptyBlocks) {
+        Writer writer = getWriter(blockId);
+        writer.appendEmpty(blockId, 1);
+      }
+      LOG.info("Visible data block {}", visibleDataBlocks.getCardinality());
+      byte[] buf = new byte[blockSize];
+      for (Integer blockId : visibleDataBlocks) {
+        reader.readBlock(blockId, buf, 0);
+        writeBlock(blockId, buf);
+      }
+      releaseOldLayers();
+      LOG.info("Finished compaction of layer {}", reader.getLayerId());
+    }
+  }
+
+  private RoaringBitmap getVisibleBlocks(int index, List<Reader> readers, RoaringBitmap blocks) throws IOException {
+    RoaringBitmap visibleBlocks = new RoaringBitmap();
+    visibleBlocks.or(blocks);
+    for (int i = 0; i < index; i++) {
+      Reader r = readers.get(i);
+      RoaringBitmap eb = (RoaringBitmap) r.getEmptyBlocks();
+      RoaringBitmap db = (RoaringBitmap) r.getDataBlocks();
+      visibleBlocks.andNot(eb);
+      visibleBlocks.andNot(db);
+    }
+    return visibleBlocks;
+  }
+
+  private RoaringBitmap getVisibleDataBlocks(int index, List<Reader> readers) throws IOException {
+    Reader reader = readers.get(index);
+    RoaringBitmap blocks = (RoaringBitmap) reader.getDataBlocks();
+    return getVisibleBlocks(index, readers, blocks);
+  }
+
+  private RoaringBitmap getVisibleEmptyBlocks(int index, List<Reader> readers) throws IOException {
+    Reader reader = readers.get(index);
+    RoaringBitmap blocks = (RoaringBitmap) reader.getEmptyBlocks();
+    return getVisibleBlocks(index, readers, blocks);
   }
 
   @Override

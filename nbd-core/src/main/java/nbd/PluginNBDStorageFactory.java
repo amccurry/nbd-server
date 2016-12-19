@@ -35,7 +35,19 @@ public class PluginNBDStorageFactory extends NBDStorageFactory {
 
   private static Logger LOGGER = LoggerFactory.getLogger(NBDServer.class);
 
-  private final Map<String, NBDStorageFactory> factoryMap = new MapMaker().makeMap();
+  private final Map<String, Storage> factoryMap = new MapMaker().makeMap();
+
+  static class Storage {
+
+    final NBDStorageFactory factory;
+    final ClassLoader classLoader;
+
+    Storage(NBDStorageFactory factory, ClassLoader classLoader) {
+      this.factory = factory;
+      this.classLoader = classLoader;
+    }
+
+  }
 
   public PluginNBDStorageFactory(File dir, boolean skipErrors) throws IOException {
     super("plugin");
@@ -59,7 +71,10 @@ public class PluginNBDStorageFactory extends NBDStorageFactory {
     }
     LOGGER.info("Loading plugin from {}", dir.getAbsolutePath());
     FileClassLoader cl = new FileClassLoader(dir.listFiles());
+    Thread currentThread = Thread.currentThread();
+    ClassLoader contextClassLoader = currentThread.getContextClassLoader();
     try {
+      currentThread.setContextClassLoader(cl);
       ServiceLoader<NBDStorageFactory> loader = ServiceLoader.load(NBDStorageFactory.class, cl);
       for (NBDStorageFactory factory : loader) {
         String driverName = factory.getDriverName();
@@ -67,18 +82,21 @@ public class PluginNBDStorageFactory extends NBDStorageFactory {
           throw new IOException("Factory driver name " + driverName + " has already been registered.");
         }
         LOGGER.info("Loading NBDStorageFactory {} {}", driverName, factory.getClass());
-        factoryMap.put(driverName, factory);
+        factoryMap.put(driverName, new Storage(factory, cl));
       }
     } catch (ServiceConfigurationError e) {
       if (skipErrors) {
         LOGGER.error("Could not load plugin from dir {}", dir);
       } else {
         if (e.getCause() instanceof MissingPropertyException) {
-          System.err.println(e.getCause().getMessage());
+          System.err.println(e.getCause()
+                              .getMessage());
           System.exit(1);
         }
         throw e;
       }
+    } finally {
+      currentThread.setContextClassLoader(contextClassLoader);
     }
   }
 
@@ -86,8 +104,15 @@ public class PluginNBDStorageFactory extends NBDStorageFactory {
   public NBDStorage newStorage(String driverPlusExportName) throws IOException {
     String driverName = getDriverName(driverPlusExportName);
     String exportName = getExportName(driverPlusExportName);
-    NBDStorageFactory nbdStorageFactory = getStorageFactory(driverName);
-    return nbdStorageFactory.newStorage(exportName);
+    Storage storage = getStorageFactory(driverName);
+    Thread currentThread = Thread.currentThread();
+    ClassLoader contextClassLoader = currentThread.getContextClassLoader();
+    try {
+      currentThread.setContextClassLoader(storage.classLoader);
+      return storage.factory.newStorage(exportName);
+    } finally {
+      currentThread.setContextClassLoader(contextClassLoader);
+    }
   }
 
   @Override
@@ -95,11 +120,15 @@ public class PluginNBDStorageFactory extends NBDStorageFactory {
       throws IOException {
     String driverName = getDriverName(driverPlusExportName);
     String exportName = getExportName(driverPlusExportName);
-    NBDStorageFactory nbdStorageFactory = getStorageFactory(driverName);
+    Storage storage = getStorageFactory(driverName);
     Thread currentThread = Thread.currentThread();
     ClassLoader contextClassLoader = currentThread.getContextClassLoader();
-    currentThread.setContextClassLoader(cl);
-    nbdStorageFactory.create(exportName, blockSize, size, optionalProperties);
+    try {
+      currentThread.setContextClassLoader(storage.classLoader);
+      storage.factory.create(exportName, blockSize, size, optionalProperties);
+    } finally {
+      currentThread.setContextClassLoader(contextClassLoader);
+    }
   }
 
   private String getExportName(String s) throws IOException {
@@ -118,12 +147,12 @@ public class PluginNBDStorageFactory extends NBDStorageFactory {
     return s.substring(0, indexOf);
   }
 
-  private NBDStorageFactory getStorageFactory(String driverName) throws IOException {
-    NBDStorageFactory nbdStorageFactory = factoryMap.get(driverName);
-    if (nbdStorageFactory == null) {
+  private Storage getStorageFactory(String driverName) throws IOException {
+    Storage storage = factoryMap.get(driverName);
+    if (storage == null) {
       throw new IOException("driver name " + driverName + " not found");
     }
-    return nbdStorageFactory;
+    return storage;
   }
 
 }

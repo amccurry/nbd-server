@@ -60,7 +60,7 @@ public class AppendStorageTest {
     int size = 1024 * 1024 * 1024;
 
     String exportName = "test";
-    FileLayerManager layerManager = new FileLayerManager(blockSize, maxCacheMemory, new File(dir, exportName));
+    FileLayerManager layerManager = new FileLayerManager(size, blockSize, maxCacheMemory, new File(dir, exportName));
     layerManager.open();
     size = (size / blockSize) * blockSize;
 
@@ -75,13 +75,16 @@ public class AppendStorageTest {
         for (int i = 0; i < passes; i++) {
           random.nextBytes(bufWrite);
           int pos = random.nextInt(size / 512) * 512;
-          storage.write(bufWrite, pos).call();
-          storage.read(bufRead, pos).call();
+          storage.write(bufWrite, pos)
+                 .call();
+          storage.read(bufRead, pos)
+                 .call();
           assertArrayEquals(bufWrite, bufRead);
         }
       }
       {
-        storage.flush().call();
+        storage.flush()
+               .call();
         Random random = new Random(seed);
         for (int i = 0; i < passes; i++) {
           random.nextBytes(bufWrite);
@@ -187,6 +190,11 @@ public class AppendStorageTest {
 
       @Override
       public void open() throws IOException {
+
+      }
+
+      @Override
+      public void compact(long maxSize) throws IOException {
 
       }
 

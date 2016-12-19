@@ -68,6 +68,11 @@ public interface LayerStorage extends Closeable {
   void releaseOldLayers() throws IOException;
 
   /**
+   * Compacts all layer less than maxSize.
+   */
+  void compact(long maxSize) throws IOException;
+
+  /**
    * Flushes the blocks to stable storage.
    */
   void flush() throws IOException;

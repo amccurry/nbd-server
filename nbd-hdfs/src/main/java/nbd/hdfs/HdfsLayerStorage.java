@@ -21,20 +21,22 @@ public class HdfsLayerStorage extends LayerManager {
   private final Path root;
   private final FileSystem fileSystem;
 
-  public HdfsLayerStorage(Path root, Configuration configuration, int blockSize, int maxCacheMemory)
+  public HdfsLayerStorage(long size, Path root, Configuration configuration, int blockSize, int maxCacheMemory)
       throws IOException {
-    super(blockSize, maxCacheMemory);
+    super(size, blockSize, maxCacheMemory);
     this.root = root;
     fileSystem = root.getFileSystem(configuration);
   }
 
   @Override
   protected long[] getLayers() throws IOException {
-    FileStatus[] listStatus = fileSystem.listStatus(root, (PathFilter) path -> path.getName().endsWith(LAYER_EXT));
+    FileStatus[] listStatus = fileSystem.listStatus(root, (PathFilter) path -> path.getName()
+                                                                                   .endsWith(LAYER_EXT));
     long[] layers = new long[listStatus.length];
     int index = 0;
     for (FileStatus fileStatus : listStatus) {
-      String name = fileStatus.getPath().getName();
+      String name = fileStatus.getPath()
+                              .getName();
       layers[index++] = toLayerId(name);
     }
     return layers;

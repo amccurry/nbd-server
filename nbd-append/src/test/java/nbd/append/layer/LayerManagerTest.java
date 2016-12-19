@@ -69,13 +69,17 @@ public class LayerManagerTest {
     maxCacheSize = random.nextInt(MAX_CACHE_SIZE);
     dir = new File(root, "LayerManager");
     dir.mkdirs();
-    layerManager = getLayerManager(blockSize, maxCacheSize, dir);
+    layerManager = getLayerManager(getSize(), blockSize, maxCacheSize, dir);
 
     writeBlock = new byte[blockSize];
     readBlock = new byte[blockSize];
     readBuffer = new byte[blockSize];
     writeRandom = new Random(seed);
     readRandom = new Random(seed);
+  }
+
+  private int getSize() {
+    return blockSize * MAX_BLOCK_ID;
   }
 
   @After
@@ -101,8 +105,8 @@ public class LayerManagerTest {
     for (int p = 0; p < passes; p++) {
       int numberOfBlocks = random.nextInt(MAX_NUMBER_OF_BLOCKS);
       int maxBlockId = random.nextInt(MAX_BLOCK_ID);
-      System.out
-          .println("Running pass [" + p + "] numberOfBlocks [" + numberOfBlocks + "] maxBlockId [" + maxBlockId + "]");
+      System.out.println(
+          "Running pass [" + p + "] numberOfBlocks [" + numberOfBlocks + "] maxBlockId [" + maxBlockId + "]");
       BitSet bitSet = new BitSet();
       try (RandomAccessFile rand = new RandomAccessFile(
           new File(root, "rand-follower-" + pass + "-" + getClass().getName()), "rw")) {
@@ -131,7 +135,7 @@ public class LayerManagerTest {
     write(14);
     write(17);
     layerManager.close();
-    layerManager = getLayerManager(blockSize, maxCacheSize, dir);
+    layerManager = getLayerManager(getSize(), blockSize, maxCacheSize, dir);
     layerManager.open();
     readAndAssert(11);
     readAndAssert(14);
@@ -177,8 +181,8 @@ public class LayerManagerTest {
     assertArrayEquals("Seed [" + seed + "]", readBlock, readBuffer);
   }
 
-  private static LayerManager getLayerManager(int blockSize, int maxCacheSize, File dir) throws IOException {
-    return new FileLayerManager(blockSize, maxCacheSize, dir);
+  private static LayerManager getLayerManager(long size, int blockSize, int maxCacheSize, File dir) throws IOException {
+    return new FileLayerManager(size, blockSize, maxCacheSize, dir);
   }
 
 }

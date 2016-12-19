@@ -26,8 +26,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Arrays;
-import java.util.Set;
-import java.util.TreeSet;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -306,9 +304,15 @@ public class Layer {
     @Override
     public void close() throws IOException {
       try (Writer writer = writerForClosing.newWriter(layerId)) {
-        Set<Integer> blockIds = new TreeSet<Integer>(blockCache.keySet());
+        RoaringBitmap blockIds = new RoaringBitmap();
+        blockIds.or(dataPresent);
+        blockIds.or(zerosPresent);
         for (Integer blockId : blockIds) {
-          writer.append(blockId, blockCache.get(blockId));
+          if (zerosPresent.contains(blockId)) {
+            writer.appendEmpty(blockId, 1);
+          } else {
+            writer.append(blockId, blockCache.get(blockId));
+          }
         }
       }
     }

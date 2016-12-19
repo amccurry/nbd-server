@@ -33,8 +33,8 @@ public class FileLayerManager extends LayerManager {
 
   private final File dir;
 
-  public FileLayerManager(int blockSize, int maxCacheMemory, File dir) throws IOException {
-    super(blockSize, maxCacheMemory);
+  public FileLayerManager(long size, int blockSize, int maxCacheMemory, File dir) throws IOException {
+    super(size, blockSize, maxCacheMemory);
     dir.mkdir();
     if (!dir.exists()) {
       throw new IOException("Path [" + dir + "] does not exist.");
@@ -50,7 +50,8 @@ public class FileLayerManager extends LayerManager {
   @Override
   protected LayerOutput newOutput(long layerId) throws IOException {
     File file = new File(dir, Long.toString(layerId));
-    file.getParentFile().mkdirs();
+    file.getParentFile()
+        .mkdirs();
     return toLayerOutput(new FileOutputStream(file));
   }
 

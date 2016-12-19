@@ -63,7 +63,8 @@ public class HdfsStorageFactory extends NBDStorageFactory {
     long size = Long.parseLong(required(properties, SIZE));
     int maxCacheMemory = Integer.parseInt(required(properties, MAX_CACHE_MEMORY));
 
-    LayerStorage layerStorage = new HdfsLayerStorage(path, configuration, blockSize, maxCacheMemory);
+    LayerStorage layerStorage = new HdfsLayerStorage(size, path, configuration, blockSize, maxCacheMemory);
+    layerStorage.open();
     return new AppendStorage(exportName, layerStorage, blockSize, size);
   }
 
