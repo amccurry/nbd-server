@@ -27,13 +27,13 @@ import java.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class FileLayerManager extends LayerManager {
+public class FileLayerStorage extends BaseLayerStorage {
 
-  private static final Logger LOG = LoggerFactory.getLogger(FileLayerManager.class);
+  private static final Logger LOG = LoggerFactory.getLogger(FileLayerStorage.class);
 
   private final File dir;
 
-  public FileLayerManager(long size, int blockSize, int maxCacheMemory, File dir) throws IOException {
+  public FileLayerStorage(long size, int blockSize, int maxCacheMemory, File dir) throws IOException {
     super(size, blockSize, maxCacheMemory);
     dir.mkdir();
     if (!dir.exists()) {

@@ -33,7 +33,7 @@ import org.junit.Test;
 
 import nbd.append.TestUtils;
 
-public class LayerManagerTest {
+public class BaseLayerStorageTest {
 
   private static final int MAX_BLOCK_ID = 10000;
   private static final int MAX_NUMBER_OF_BLOCKS = 1000;
@@ -48,7 +48,7 @@ public class LayerManagerTest {
 
   private File root;
   private int blockSize;
-  private LayerManager layerManager;
+  private BaseLayerStorage layerManager;
   private byte[] writeBlock;
   private byte[] readBlock;
   private byte[] readBuffer;
@@ -59,7 +59,7 @@ public class LayerManagerTest {
 
   @Before
   public void setup() throws IOException {
-    root = new File("./target/tmp/" + LayerManagerTest.class.getName());
+    root = new File("./target/tmp/" + BaseLayerStorageTest.class.getName());
     TestUtils.rmr(root);
     root.mkdirs();
 
@@ -181,8 +181,8 @@ public class LayerManagerTest {
     assertArrayEquals("Seed [" + seed + "]", readBlock, readBuffer);
   }
 
-  private static LayerManager getLayerManager(long size, int blockSize, int maxCacheSize, File dir) throws IOException {
-    return new FileLayerManager(size, blockSize, maxCacheSize, dir);
+  private static BaseLayerStorage getLayerManager(long size, int blockSize, int maxCacheSize, File dir) throws IOException {
+    return new FileLayerStorage(size, blockSize, maxCacheSize, dir);
   }
 
 }

@@ -41,9 +41,9 @@ import nbd.append.layer.Layer.ReaderLayerInput;
 import nbd.append.layer.Layer.Writer;
 import nbd.append.layer.Layer.WriterLayerOutput;
 
-public abstract class LayerManager implements LayerStorage {
+public abstract class BaseLayerStorage implements LayerStorage {
 
-  private static final Logger LOG = LoggerFactory.getLogger(LayerManager.class);
+  private static final Logger LOG = LoggerFactory.getLogger(BaseLayerStorage.class);
 
   static class ReaderState {
     final List<Reader> readers;
@@ -67,18 +67,86 @@ public abstract class LayerManager implements LayerStorage {
   private final Object lock = new Object();
   private final int blockSize;
   private final int maxCacheMemory;
-  private final int maxNumberOfBlocks;
   private final AtomicReference<ReaderState> readerState = new AtomicReference<ReaderState>();
   private final Thread thread;
   private final AtomicBoolean open = new AtomicBoolean(false);
   private CacheContext currentWriter;
 
-  public LayerManager(long size, int blockSize, int maxCacheMemory) throws IOException {
+  public BaseLayerStorage(long size, int blockSize, int maxCacheMemory) throws IOException {
     this.blockSize = blockSize;
     this.maxCacheMemory = maxCacheMemory;
-    this.maxNumberOfBlocks = (int) (size % blockSize == 0 ? size / blockSize : (size / blockSize) + 1);
     readerState.set(new ReaderState(blockSize, null));
     thread = createCompactionThread();
+  }
+
+  @Override
+  public void readBlock(int blockId, byte[] buf, int off) throws IOException {
+    synchronized (lock) {
+      refeshReaders();
+      ReaderState state = readerState.get();
+      state.readBlock(blockId, buf, off);
+    }
+  }
+
+  @Override
+  public void writeBlock(int blockId, byte[] buf, int off) throws IOException {
+    synchronized (lock) {
+      Writer writer = getWriter(blockId);
+      writer.append(blockId, buf, off);
+    }
+  }
+
+  @Override
+  public void compact(long maxTimeLockTimeNs) throws IOException {
+    synchronized (lock) {
+      tryToFlush();
+      refeshReaders();
+      ReaderState state = readerState.get();
+      int size = state.readers.size();
+      int indexOfReaderToBeCompacted = size - 1;
+      Reader reader = state.readers.get(indexOfReaderToBeCompacted);
+      LOG.info("Starting compaction of layer {}", reader.getLayerId());
+      RoaringBitmap visibleEmptyBlocks = getVisibleEmptyBlocks(indexOfReaderToBeCompacted, state.readers);
+      RoaringBitmap visibleDataBlocks = getVisibleDataBlocks(indexOfReaderToBeCompacted, state.readers);
+      LOG.info("Visible empty block {}", visibleEmptyBlocks.getCardinality());
+      for (Integer blockId : visibleEmptyBlocks) {
+        Writer writer = getWriter(blockId);
+        writer.appendEmpty(blockId, 1);
+      }
+      LOG.info("Visible data block {}", visibleDataBlocks.getCardinality());
+      byte[] buf = new byte[blockSize];
+      for (Integer blockId : visibleDataBlocks) {
+        reader.readBlock(blockId, buf, 0);
+        writeBlock(blockId, buf);
+      }
+      releaseOldLayers();
+      LOG.info("Finished compaction of layer {}", reader.getLayerId());
+    }
+  }
+
+  @Override
+  public void releaseOldLayers() throws IOException {
+    synchronized (lock) {
+      refeshReaders();
+      ReaderState state = readerState.get();
+      List<Reader> readers = new ArrayList<>(state.readers);
+      for (int i = 0; i < readers.size(); i++) {
+        if (isNotInUse(readers, i)) {
+          closeAndRemove(readers.get(i));
+        }
+      }
+      refeshReaders();
+    }
+  }
+
+  private void tryToFlush() throws IOException {
+    synchronized (lock) {
+      if (currentWriter != null) {
+        LOG.debug("Flushing writer layer {}", currentWriter.getLayerId());
+        currentWriter.close();
+        currentWriter = null;
+      }
+    }
   }
 
   private Thread createCompactionThread() {
@@ -128,22 +196,6 @@ public abstract class LayerManager implements LayerStorage {
     tryToFlush();
   }
 
-  @Override
-  public void releaseOldLayers() throws IOException {
-    synchronized (lock) {
-//      tryToFlush();
-      refeshReaders();
-      ReaderState state = readerState.get();
-      List<Reader> readers = new ArrayList<>(state.readers);
-      for (int i = 0; i < readers.size(); i++) {
-        if (isNotInUse(readers, i)) {
-          closeAndRemove(readers.get(i));
-        }
-      }
-      refeshReaders();
-    }
-  }
-
   private void closeAndRemove(Reader reader) throws IOException {
     LOG.info("layer {} reader {} no longer in use close and remove", reader.getLayerId(), reader);
     reader.close();
@@ -165,51 +217,6 @@ public abstract class LayerManager implements LayerStorage {
   @Override
   public void readBlock(int blockId, byte[] block) throws IOException {
     readBlock(blockId, block, 0);
-  }
-
-  @Override
-  public void readBlock(int blockId, byte[] buf, int off) throws IOException {
-    synchronized (lock) {
-      refeshReaders();
-      ReaderState state = readerState.get();
-      state.readBlock(blockId, buf, off);
-    }
-  }
-
-  @Override
-  public void writeBlock(int blockId, byte[] buf, int off) throws IOException {
-    synchronized (lock) {
-      Writer writer = getWriter(blockId);
-      writer.append(blockId, buf, off);
-    }
-  }
-
-  @Override
-  public void compact(long maxTimeLockTimeNs) throws IOException {
-    synchronized (lock) {
-      tryToFlush();
-      refeshReaders();
-      ReaderState state = readerState.get();
-      int size = state.readers.size();
-      int indexOfReaderToBeCompacted = size - 1;
-      Reader reader = state.readers.get(indexOfReaderToBeCompacted);
-      LOG.info("Starting compaction of layer {}", reader.getLayerId());
-      RoaringBitmap visibleEmptyBlocks = getVisibleEmptyBlocks(indexOfReaderToBeCompacted, state.readers);
-      RoaringBitmap visibleDataBlocks = getVisibleDataBlocks(indexOfReaderToBeCompacted, state.readers);
-      LOG.info("Visible empty block {}", visibleEmptyBlocks.getCardinality());
-      for (Integer blockId : visibleEmptyBlocks) {
-        Writer writer = getWriter(blockId);
-        writer.appendEmpty(blockId, 1);
-      }
-      LOG.info("Visible data block {}", visibleDataBlocks.getCardinality());
-      byte[] buf = new byte[blockSize];
-      for (Integer blockId : visibleDataBlocks) {
-        reader.readBlock(blockId, buf, 0);
-        writeBlock(blockId, buf);
-      }
-      releaseOldLayers();
-      LOG.info("Finished compaction of layer {}", reader.getLayerId());
-    }
   }
 
   private RoaringBitmap getVisibleBlocks(int index, List<Reader> readers, RoaringBitmap blocks) throws IOException {
@@ -246,16 +253,6 @@ public abstract class LayerManager implements LayerStorage {
     synchronized (lock) {
       try (WriterLayerOutput output = newWriterLayerOutput()) {
         output.appendEmpty(startingBlockId, count);
-      }
-    }
-  }
-
-  private void tryToFlush() throws IOException {
-    synchronized (lock) {
-      if (currentWriter != null) {
-        LOG.debug("Flushing writer layer {}", currentWriter.getLayerId());
-        currentWriter.close();
-        currentWriter = null;
       }
     }
   }

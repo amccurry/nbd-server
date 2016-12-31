@@ -12,10 +12,10 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
 
 import nbd.append.layer.LayerInput;
-import nbd.append.layer.LayerManager;
+import nbd.append.layer.BaseLayerStorage;
 import nbd.append.layer.LayerOutput;
 
-public class HdfsLayerStorage extends LayerManager {
+public class HdfsLayerStorage extends BaseLayerStorage {
 
   private static final String LAYER_EXT = ".layer";
   private final Path root;

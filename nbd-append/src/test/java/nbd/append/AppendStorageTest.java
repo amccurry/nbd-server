@@ -30,7 +30,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import nbd.NBDCommand;
-import nbd.append.layer.FileLayerManager;
+import nbd.append.layer.FileLayerStorage;
 import nbd.append.layer.LayerStorage;
 
 public class AppendStorageTest {
@@ -60,7 +60,7 @@ public class AppendStorageTest {
     int size = 1024 * 1024 * 1024;
 
     String exportName = "test";
-    FileLayerManager layerManager = new FileLayerManager(size, blockSize, maxCacheMemory, new File(dir, exportName));
+    FileLayerStorage layerManager = new FileLayerStorage(size, blockSize, maxCacheMemory, new File(dir, exportName));
     layerManager.open();
     size = (size / blockSize) * blockSize;
 

@@ -105,7 +105,7 @@ public class LayerTest {
 
   private long writeLayer(long layerId, File file, Random random, int blockSize, byte[] buf) throws IOException {
     long total = 0;
-    try (LayerOutput output = FileLayerManager.toLayerOutput(new FileOutputStream(file))) {
+    try (LayerOutput output = FileLayerStorage.toLayerOutput(new FileOutputStream(file))) {
       int blockId = initalBlockId;
       try (Writer writer = new Layer.WriterLayerOutput(layerId, blockSize, output)) {
         for (int i = 0; i < numberOfBlocks; i++) {
@@ -121,7 +121,7 @@ public class LayerTest {
 
   private static LayerInput getInputReader(File file) throws IOException {
     RandomAccessFile rand = new RandomAccessFile(file, "r");
-    return FileLayerManager.toLayerInput(rand);
+    return FileLayerStorage.toLayerInput(rand);
   }
 
 }
