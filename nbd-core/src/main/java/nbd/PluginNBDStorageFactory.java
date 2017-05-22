@@ -54,6 +54,10 @@ public class PluginNBDStorageFactory extends NBDStorageFactory {
     loadPlugins(dir, skipErrors);
   }
 
+  public PluginNBDStorageFactory(NBDConfig config) throws IOException {
+    this(config.getPluginDir(), config.isPluginSkipErrors());
+  }
+
   private void loadPlugins(File dir, boolean skipErrors) throws IOException {
     LOGGER.info("Loading plugins from {}", dir.getAbsolutePath());
     if (!dir.isDirectory()) {
@@ -89,8 +93,7 @@ public class PluginNBDStorageFactory extends NBDStorageFactory {
         LOGGER.error("Could not load plugin from dir {}", dir);
       } else {
         if (e.getCause() instanceof MissingPropertyException) {
-          System.err.println(e.getCause()
-                              .getMessage());
+          System.err.println(e.getCause().getMessage());
           System.exit(1);
         }
         throw e;

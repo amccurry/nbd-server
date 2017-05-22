@@ -30,8 +30,11 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import org.newsclub.net.unix.AFUNIXServerSocket;
+import org.newsclub.net.unix.AFUNIXSocketAddress;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,15 +47,50 @@ public class NBDServer {
 
   private static Logger LOGGER = LoggerFactory.getLogger(NBDServer.class);
 
+  private static final String NBD_UNIX_SOCKET_PATH = "NBD_UNIX_SOCKET_PATH";
+  private static final String NBD_ENABLE_UNIX_SOCKET = "NBD_ENABLE_UNIX_SOCKET";
+  private static final String NBD_TCP_PORT = "NBD_TCP_PORT";
+  private static final String NBD_PLUGIN_SKIP_ERRORS = "NBD_PLUGIN_SKIP_ERRORS";
+  private static final String NBD_PLUGIN_DIR = "NBD_PLUGIN_DIR";
+
   public static void main(String[] args) throws IOException {
-    ListeningExecutorService service = MoreExecutors.listeningDecorator(Executors.newCachedThreadPool());
-    File pluginDir = new File(args[0]);
-    PluginNBDStorageFactory storageFactory = new PluginNBDStorageFactory(pluginDir, false);
-    try (ServerSocket ss = new ServerSocket(10809)) {
+    NBDConfig config = getNBDConfig();
+    ExecutorService threadPool = Executors.newFixedThreadPool(10);
+    ListeningExecutorService service = MoreExecutors.listeningDecorator(threadPool);
+    PluginNBDStorageFactory storageFactory = new PluginNBDStorageFactory(config);
+    try (ServerSocket ss = getServerSocket(config)) {
       LOGGER.info("Listening for client connections");
       while (true) {
         service.submit(new VolumeServerRunner(ss.accept(), storageFactory, service));
       }
+    }
+  }
+
+  private static NBDConfig getNBDConfig() {
+
+    File pluginDir = getFileProp(NBD_PLUGIN_DIR);
+    boolean pluginSkipErrors = getBooleanProp(NBD_PLUGIN_SKIP_ERRORS, false);
+
+    int tcpPort = getIntProp(NBD_TCP_PORT, 10809);
+
+    boolean enableUnixSocket = getBooleanProp(NBD_ENABLE_UNIX_SOCKET, false);
+    File unixSocket = getFileProp(NBD_UNIX_SOCKET_PATH);
+
+    return NBDConfig.builder().enableUnixSocket(enableUnixSocket).pluginDir(pluginDir).unixSocket(unixSocket)
+        .pluginSkipErrors(pluginSkipErrors).tcpPort(tcpPort).build();
+  }
+
+  private static ServerSocket getServerSocket(NBDConfig nbdConfig) throws IOException {
+    if (nbdConfig.isEnableUnixSocket()) {
+      File unixSocket = nbdConfig.getUnixSocket();
+      unixSocket.mkdirs();
+      if (unixSocket.exists()) {
+        unixSocket.delete();
+      }
+      AFUNIXSocketAddress addr = new AFUNIXSocketAddress(unixSocket);
+      return AFUNIXServerSocket.bindOn(addr);
+    } else {
+      return new ServerSocket(nbdConfig.getTcpPort());
     }
   }
 
@@ -117,5 +155,33 @@ public class NBDServer {
       return new String(bytes, Charsets.UTF_8);
     }
 
+  }
+
+  private static int getIntProp(String name, int defaultValue) {
+    String prop = getStringProp(name);
+    if (prop == null) {
+      return defaultValue;
+    }
+    return Integer.parseInt(prop);
+  }
+
+  private static String getStringProp(String name) {
+    return System.getenv(name);
+  }
+
+  private static boolean getBooleanProp(String name, boolean defaultValue) {
+    String prop = getStringProp(name);
+    if (prop == null) {
+      return defaultValue;
+    }
+    return Boolean.parseBoolean(prop);
+  }
+
+  private static File getFileProp(String name) {
+    String prop = getStringProp(name);
+    if (prop == null) {
+      return null;
+    }
+    return new File(prop);
   }
 }

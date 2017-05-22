@@ -11,11 +11,8 @@
 	<dependencySets>
 		<dependencySet>
 			<useProjectArtifact>true</useProjectArtifact>
-			<outputDirectory>/${project.artifactId}-${project.version}</outputDirectory>
+			<outputDirectory>/lib</outputDirectory>
 			<unpack>false</unpack>
-			<excludes>
-				<exclude>nbd:nbd-spi</exclude>
-			</excludes>
 		</dependencySet>
 	</dependencySets>
 </assembly>

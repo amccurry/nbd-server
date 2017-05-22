@@ -1,0 +1,22 @@
+wget http://vault.centos.org/7.3.1611/os/Source/SPackages/kernel-3.10.0-514.el7.src.rpm
+rpm -ivh kernel-3.10.0-514.el7.src.rpm
+mkdir -p ~/rpmbuild/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
+echo '%_topdir %(echo $HOME)/rpmbuild' > ~/.rpmmacros
+cd ~/rpmbuild/SPECS/
+yum install -y rpm-build m4 gcc xmlto asciidoc hmaccalc python-devel newt-devel pesign elfutils-devel zlib-devel binutils-devel bison audit-libs-devel numactl-devel pciutils-devel ncurses-devel perl-ExtUtils-Embed
+rpmbuild -bp --target=$(uname -m) kernel.spec
+~/rpmbuild/BUILD/kernel-3.10.0-514.el7/linux-3.10.0-514.el7.centos.x86_64/
+# PATH NBD
+vi drivers/block/nbd.c
+
+make menuconfig # select nbd driver
+
+# Takes forever
+make prepare && make modules_prepare && make
+
+make M=drivers/block -j8
+modinfo drivers/block/nbd.ko
+
+cp drivers/block/nbd.ko /lib/modules/3.10.0-514.16.1.el7.x86_64/extra/
+depmod -a
+modprobe nbd

@@ -127,7 +127,7 @@ public class NBDVolumeServer implements Closeable {
     commandHandler.handleRequest(callable, () -> {
       try {
         writeReplyHeaderAndFlush(handle);
-        LOGGER.info("Trim complete: " + (System.currentTimeMillis() - start) + "ms");
+        LOGGER.info("Trim complete: {} ms",(System.currentTimeMillis() - start));
       } catch (Throwable t) {
         LOGGER.error("trim error", t);
         shutdownConnection();
@@ -151,7 +151,7 @@ public class NBDVolumeServer implements Closeable {
     commandHandler.handleRequest(callable, () -> {
       try {
         writeReplyHeaderAndFlush(handle);
-        LOGGER.info("Flush complete: " + (System.currentTimeMillis() - start) + "ms");
+        LOGGER.info("Flush complete: {} ms",(System.currentTimeMillis() - start));
       } catch (Throwable t) {
         LOGGER.error("flushing", t);
         shutdownConnection();
